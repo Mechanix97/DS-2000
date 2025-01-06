@@ -1,13 +1,14 @@
 use crate::discord::utils::*;
 
+#[derive(Debug)]
 pub struct PipeMessage {
     pub opcode: Opcode,
-    length: u32,
-    payload: Option<String>
+    pub length: u32,
+    pub payload: Option<String>
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Opcode{
     Handshake = 0,
     Frame = 1,
@@ -63,7 +64,7 @@ impl PipeMessage {
 
     pub fn authorize(client_id: &str, scopes: &str) -> Self {
         let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "AUTHORIZE","args":{{ "client_id": "{}","scopes": "{}"}}}}"#,
+            r#"{{"nonce": "{}", "cmd": "AUTHORIZE","args":{{ "client_id": "{}","scopes": ["{}"]}}}}"#,
             generate_nonce(36),
             client_id,
             scopes

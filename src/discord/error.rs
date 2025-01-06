@@ -1,7 +1,9 @@
 #[derive(Debug, Clone)]
-pub enum DiscordErrors {
+pub enum DiscordError {
     PipeConnectionFailed,
     PipeNotConnected,
     PipeErrorReading,
-    HandshakeFailed
+    PipeWriteError,
+    HandshakeFailed,
+    ClientIdNotFound
 }
