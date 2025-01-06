@@ -1,0 +1,8 @@
+[package]
+name = "DS-2000"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+named_pipe = "0.4.1"
+rand = "0.8"
