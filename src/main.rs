@@ -22,23 +22,35 @@ fn main() {
         }
     } 
 
-    let mut token = "".to_string();
+    let mut code = "".to_string();
     match ds.authorize() {
         Ok(t) => {
-            token = t.clone();
-            println!("AUTHORIZE OK. Token: {}", t);
+            code = t.clone();
+            println!("AUTHORIZE OK. code: {}", t);
         }
         Err(_) => {
             println!("error re loco");
         }
     }
 
+    code = code.trim_matches('"').to_owned();
+    let token = ds.get_access_token(&code, "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp", "https://www.mechardo3d.xyz/");
+    println!("TOKEN: {}", token);
     match ds.authenticate(&token) {
         Ok(_) => {   
-            println!("authenticate OK");
+            println!("authenticate OK.");
         }
-        Err(_) => {
-            println!("error re loco");
+        Err(e) => {
+            println!("error re loco2. {:?}", e);
+        }
+    }
+
+    match ds.get_voice_settings() {
+        Ok(r) => {   
+            println!("get_voice_settings: {}, {}", r.0,  r.1);
+        }
+        Err(e) => {
+            println!("error re loco3. {:?}", e);
         }
     }
 }
