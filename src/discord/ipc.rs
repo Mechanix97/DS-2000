@@ -42,11 +42,45 @@ impl IPCClient {
     }
    
 
+    pub fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
+        let mut buf = [0u8; 4];
+        let received_opcode: u32;
+        let received_length: u32;
+        
+        match &mut self.client_pipe {
+            Some(cp) => {
+                if let Err(_) = cp.read_exact(&mut buf){
+                    return Err(DiscordError::PipeErrorReading);
+                }
+                received_opcode = u32::from_le_bytes(buf);
+
+                if let Err(_) = cp.read_exact(&mut buf){
+                    return Err(DiscordError::PipeErrorReading);
+                }
+                received_length = u32::from_le_bytes(buf);
+
+                let mut response_data = vec![0u8; received_length as usize];
+                if let Err(_) = cp.read_exact(&mut response_data){
+                    return Err(DiscordError::PipeErrorReading);
+                }
+                let response_data_str = String::from_utf8_lossy(&response_data);
+                 
+                return Ok(PipeMessage::new(Opcode::new(received_opcode), &response_data_str))
+            },
+            None => {
+                return Err(DiscordError::PipeNotConnected)
+            }
+        }
+    }
+
     pub fn handshake(&mut self, client_id: String) -> Result<(), DiscordError> {
+        //build message
         let hm =  PipeMessage::handshake(&client_id);
         
+        //store client id
         self.client_id = Some(client_id);
 
+        //send message
         match &mut self.client_pipe{
             Some(cp) => {
                 match cp.write_all(&hm.to_buff()) {
@@ -61,6 +95,7 @@ impl IPCClient {
             }
         }
         
+        //receive reply
         match &self.read_message() {
             Ok(m) => {
                 if m.opcode == Opcode::Frame {
@@ -76,36 +111,9 @@ impl IPCClient {
     }
 
 
-    pub fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
-        let mut buf = [0u8; 4];
-        let received_opcode: u32;
-        let received_length: u32;
-        
-        match &mut self.client_pipe {
-            Some(cp) => {
-                if let Err(_) = cp.read_exact(&mut buf){
-                    return Err(DiscordError::PipeErrorReading);
-                }
-                received_opcode = u32::from_le_bytes(buf);
-                if let Err(_) = cp.read_exact(&mut buf){
-                    return Err(DiscordError::PipeErrorReading);
-                }
-                received_length = u32::from_le_bytes(buf);
-                let mut response_data = vec![0u8; received_length as usize];
-                if let Err(_) = cp.read_exact(&mut response_data){
-                    return Err(DiscordError::PipeErrorReading);
-                }
-                let response_data_str = String::from_utf8_lossy(&response_data);
-                 
-                return Ok(PipeMessage::new(Opcode::new(received_opcode), &response_data_str))
-            },
-            None => {
-                return Err(DiscordError::PipeNotConnected)
-            }
-        }
-    }
-
+    
     pub fn authorize(&mut self) -> Result<String, DiscordError> {
+        //build message
         let am;
         match &self.client_id{
             Some(c) => {
@@ -115,7 +123,8 @@ impl IPCClient {
                 return Err(DiscordError::ClientIdNotFound)
             }
         }
-        println!("{:?}", am);
+        
+        //send message
         match &mut self.client_pipe {
             Some(cp) => {
                 match cp.write_all(&am.to_buff()) {
@@ -130,10 +139,16 @@ impl IPCClient {
             }
         }
         
+        //receive reply
         match self.read_message() {
             Ok(m) => {
-                let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.unwrap()).expect("Error al analizar JSON");
-                println!("parsed json: {:?}", parsed_json);
+                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
+                    Ok(payload) =>{ payload}
+                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
+                };
+                if !( parsed_json["evt"].is_null()){
+                    return Err(DiscordError::AuthorizationFailed);
+                }
                 Ok(parsed_json["data"]["code"].to_string())
             }
             Err(e) => {
@@ -143,26 +158,41 @@ impl IPCClient {
     }
 
 
-    // pub fn authenticate(&mut self, token: &str) -> Result<(),()>{
-    //     let am = PipeMessage::authenticate(token);
-    //     self.client.write_all(&am.to_buff()).unwrap();
+    pub fn authenticate(&mut self, token: &str) -> Result<(), DiscordError>{
+        //build message
+        let am = PipeMessage::authenticate(token);
         
-    //     match self.read_message() {
-    //         Ok(m) => {
-    //             println!("{}",&m.payload.clone().unwrap());
-    //             let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.clone().unwrap()).expect("Error al analizar JSON");
-    //             if parsed_json["data"]["evt"] != "ERROR" && parsed_json["data"]["code"] != 4009 {
-    //                 println!("AUTHENTICATED!");   
-    //                 Ok(())
-    //             } else {
-    //                 Err(())   
-
-    //             }
-    //         }
-    //         Err(e) => {
-    //             println!("{}", e);
-    //             Err(())
-    //         }
-    //     }
-    // }
+        //send message
+        match &mut self.client_pipe {
+            Some(cp) => {
+                match cp.write_all(&am.to_buff()) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(DiscordError::PipeWriteError)
+                    }
+                }
+            }
+            None => {
+                return Err(DiscordError::PipeNotConnected)
+            }
+        }
+        
+        //receive reply
+        match self.read_message() {
+            Ok(m) => {
+                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
+                    Ok(payload) =>{ payload}
+                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
+                };
+                if !( parsed_json["evt"].is_null()){
+                    return Err(DiscordError::AuthenticationFailed);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                return Err(e.clone())
+            }
+        }
+        
+    }
 }

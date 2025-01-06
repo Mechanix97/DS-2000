@@ -5,5 +5,8 @@ pub enum DiscordError {
     PipeErrorReading,
     PipeWriteError,
     HandshakeFailed,
-    ClientIdNotFound
+    ClientIdNotFound,
+    SerdeConvertionError,
+    AuthorizationFailed,
+    AuthenticationFailed
 }

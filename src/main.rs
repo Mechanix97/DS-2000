@@ -22,9 +22,20 @@ fn main() {
         }
     } 
 
+    let mut token = "".to_string();
     match ds.authorize() {
-        Ok(_) => {
-            println!("AUTHORIZE OK");
+        Ok(t) => {
+            token = t.clone();
+            println!("AUTHORIZE OK. Token: {}", t);
+        }
+        Err(_) => {
+            println!("error re loco");
+        }
+    }
+
+    match ds.authenticate(&token) {
+        Ok(_) => {   
+            println!("authenticate OK");
         }
         Err(_) => {
             println!("error re loco");

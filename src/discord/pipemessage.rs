@@ -64,7 +64,7 @@ impl PipeMessage {
 
     pub fn authorize(client_id: &str, scopes: &str) -> Self {
         let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "AUTHORIZE","args":{{ "client_id": "{}","scopes": ["{}"]}}}}"#,
+            r#"{{"nonce": "{}", "cmd": "AUTHORIZE","args":{{ "client_id": "{}","scopes": "{}"}}}}"#,
             generate_nonce(36),
             client_id,
             scopes
