@@ -8,5 +8,6 @@ pub enum DiscordError {
     ClientIdNotFound,
     SerdeConvertionError,
     AuthorizationFailed,
-    AuthenticationFailed
+    AuthenticationFailed,
+    NoDataFound
 }

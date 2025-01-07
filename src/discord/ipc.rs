@@ -197,66 +197,6 @@ impl IPCClient {
         }
     }
 
-    pub fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError>{
-        //build messsage
-        let gvsm: PipeMessage = PipeMessage::get_voice_settings();
-
-        //send message
-        match &mut self.client_pipe {
-            Some(cp) => {
-                match cp.write_all(&gvsm.to_buff()) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("{:?}", e);
-                        return Err(DiscordError::PipeWriteError)
-                    }
-                }
-            }
-            None => {
-                return Err(DiscordError::PipeNotConnected)
-            }
-        }
-        
-
-        //receive reply
-        match self.read_message() {
-            Ok(m) => {
-                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
-                    Ok(payload) =>{ payload}
-                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
-                };
-                println!("GVSM reply: {:?}", parsed_json);
-                if !( parsed_json["evt"].is_null()){
-                    return Err(DiscordError::AuthenticationFailed);
-                }
-                Ok((true, true))
-            }
-            Err(e) => {
-                return Err(e.clone())
-            }
-        }
-
-        // match self.client.write_all(&gvsm.to_buff()) {
-        //     Ok(_) => {
-        //         match self.read_message() {
-        //             Ok(m) => {
-        //                 let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.unwrap()).expect("Error al analizar JSON");             
-        //                 Ok((parsed_json["data"]["mute"].as_bool().unwrap(), parsed_json["data"]["deaf"].as_bool().unwrap()))
-        //             }
-        //             Err(e) => {
-                        
-        //                 Err(format!("{}", e).into())
-        //             }
-        //         }
-        //     }
-        //     Err(e) =>{
-        //         Err(format!("{}", e).into())
-        //     }
-        // }      
-    }
-
-
-
     pub fn get_access_token(&mut self, code: &str, client_secret: &str, redirect_uri: &str) -> String {
         let api_endpoint = "https://discord.com/api/v10/oauth2/token";
         let cs = client_secret.to_string();
@@ -284,4 +224,126 @@ impl IPCClient {
         
         response["access_token"].to_string().trim_matches('"').to_string()
     }  
+
+
+    pub fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError>{
+        //build messsage
+        let gvsm: PipeMessage = PipeMessage::get_voice_settings();
+
+        //send message
+        match &mut self.client_pipe {
+            Some(cp) => {
+                match cp.write_all(&gvsm.to_buff()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("{:?}", e);
+                        return Err(DiscordError::PipeWriteError)
+                    }
+                }
+            }
+            None => {
+                return Err(DiscordError::PipeNotConnected)
+            }
+        }
+        
+        //receive reply
+        match self.read_message() {
+            Ok(m) => {
+                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
+                    Ok(payload) =>{ payload}
+                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
+                };
+                if !( parsed_json["evt"].is_null()){
+                    return Err(DiscordError::AuthenticationFailed);
+                }
+                if parsed_json["data"]["mute"].is_null() || parsed_json["data"]["deaf"].is_null() {
+                    return Err(DiscordError::NoDataFound)
+                }
+                let muted = parsed_json["data"]["mute"].as_bool().unwrap();
+                let deafen =  parsed_json["data"]["deaf"].as_bool().unwrap();
+                Ok((muted, deafen))
+            }
+            Err(e) => {
+                return Err(e.clone())
+            }
+        }      
+    }
+
+    pub fn set_voice_settings(&mut self, muted: bool, deafed: bool) -> Result<(), DiscordError> {
+        //build message
+        let svsm: PipeMessage = PipeMessage::set_voice_settings(muted, deafed);
+        
+        //send message
+        match &mut self.client_pipe {
+            Some(cp) => {
+                match cp.write_all(&svsm.to_buff()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("{:?}", e);
+                        return Err(DiscordError::PipeWriteError)
+                    }
+                }
+            }
+            None => {
+                return Err(DiscordError::PipeNotConnected)
+            }
+        }
+                
+       //receive reply
+        match self.read_message() {
+            Ok(m) => {
+                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
+                    Ok(payload) =>{ payload}
+                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
+                };
+                if !( parsed_json["evt"].is_null()){
+                    return Err(DiscordError::AuthenticationFailed);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                return Err(e.clone())
+            }
+        }
+    }
+    
+
+    pub fn select_voice_channel(&mut self, channel_id: Option<String>) -> Result<(), DiscordError>{
+        //build message
+        let svc: PipeMessage = PipeMessage::select_voice_channel(channel_id);
+
+        //send message
+        match &mut self.client_pipe {
+            Some(cp) => {
+                match cp.write_all(&svc.to_buff()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("{:?}", e);
+                        return Err(DiscordError::PipeWriteError);
+                    }
+                }
+            }
+            None => {
+                return Err(DiscordError::PipeNotConnected)
+            }
+        };
+        
+        //receive reply
+        match self.read_message() {
+            Ok(m) => {
+                let parsed_json: serde_json::Value = match serde_json::from_str(&m.payload.unwrap()) {
+                    Ok(payload) =>{payload}
+                    Err(_) => {return Err(DiscordError::SerdeConvertionError);}
+                };
+                if !( parsed_json["evt"].is_null()){
+                    return Err(DiscordError::AuthenticationFailed);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                return Err(e.clone())
+            }
+        }
+    }
+
 }

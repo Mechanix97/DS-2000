@@ -1,4 +1,5 @@
 pub mod discord;
+use std::{thread, time};
 
 use discord::ipc::IPCClient;
 
@@ -45,12 +46,20 @@ fn main() {
         }
     }
 
-    match ds.get_voice_settings() {
-        Ok(r) => {   
-            println!("get_voice_settings: {}, {}", r.0,  r.1);
-        }
-        Err(e) => {
-            println!("error re loco3. {:?}", e);
-        }
+    loop{
+        let ten_millis = time::Duration::from_millis(10000);
+        
+    thread::sleep(ten_millis);
+         ds.select_voice_channel(None).unwrap();
+        // match ds.get_voice_settings() {
+        //     Ok(r) => {   
+        //         println!("get_voice_settings: {}, {}", r.0,  r.1);
+        //         ds.set_voice_settings(!r.0, r.1).unwrap();
+        //         ds.set_voice_settings(!r.0, !r.1).unwrap();
+        //     }
+        //     Err(e) => {
+        //         println!("error re loco3. {:?}", e);
+        //     }
+        // }
     }
 }
