@@ -1,21 +1,21 @@
 pub mod discord;
 pub mod config;
 
-use std::{thread, time};
+// use std::{thread, time};
 
 use discord::client::DiscordClient;
-use config::config::Config;
+// use config::config::Config;
 
 
 fn main(){
-    let mut DC = DiscordClient::new(
+    let mut ds = DiscordClient::new(
         "713524519830028368".to_string(),
         Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),
         "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
         "https://www.mechardo3d.xyz/".to_string()
     );
 
-    DC.connect_loop();
+    ds.connect_loop();
 
 }
 
