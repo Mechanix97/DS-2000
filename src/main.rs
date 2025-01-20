@@ -1,21 +1,35 @@
 pub mod discord;
 pub mod config;
+pub mod serial;
 
 // use std::{thread, time};
 
+use std::time::Duration;
+
 use discord::client::DiscordClient;
+use serial::port::Port;
 // use config::config::Config;
 
 
 fn main(){
-    let mut ds = DiscordClient::new(
-        "713524519830028368".to_string(),
-        Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),
-        "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
-        "https://www.mechardo3d.xyz/".to_string()
-    );
+    // let mut ds = DiscordClient::new(
+    //     "713524519830028368".to_string(),
+    //     Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),
+    //     "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
+    //     "https://www.mechardo3d.xyz/".to_string()
+    // );
 
-    ds.connect_loop();
+    // ds.connect_loop();
+
+    let mut port = Port::new();
+
+    let ports = port.get_ports().unwrap();
+
+    for p in ports {
+        println!("{}", p);
+    }
+
+    port.auto_connect(9600, Duration::from_millis(100));
 
 }
 
