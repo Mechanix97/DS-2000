@@ -7,7 +7,7 @@ use std::{thread, time};
 // use core::time;
 use std::time::Duration;
 
-use discord::client::DiscordClient;
+use discord::worker::DiscordWorker;
 use serial::port::Port;
 use serial::worker::SerialWorker;
 // use config::config::Config;
@@ -23,6 +23,24 @@ fn main(){
 
     // ds.connect_loop();
 
+    let mut ds = DiscordWorker::new();
+    ds.start();
+    
+
+    for i in 0..1000{
+        thread::sleep(time::Duration::from_millis(100));
+        match ds.get_voice_settings(){
+            Ok((m, d)) => {
+                println!("{} muted: {} | deafen: {}",i, m, d);
+            }
+            Err(e) => {
+                println!("{}, {:?}",i,  e);
+            }
+        }
+    }
+
+    ds.stop();
+
     // let mut port = Port::new();
 
     // let ports = port.get_ports().unwrap();
@@ -33,12 +51,12 @@ fn main(){
 
     // port.auto_connect(9600, Duration::from_millis(100));
 
-    let mut sw = SerialWorker::new();
-    sw.start(None);
+//     let mut sw = SerialWorker::new();
+//     sw.start(None);
     
-thread::sleep(time::Duration::from_secs(15));
+// thread::sleep(time::Duration::from_secs(15));
 
-    sw.stop();
+//     sw.stop();
     
 
 }

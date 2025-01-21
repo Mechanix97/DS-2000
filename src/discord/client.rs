@@ -135,30 +135,36 @@ impl DiscordClient {
     }
 
     pub fn connect_loop(&mut self ) {
-        loop{
-            println!("{:?}", self.status);
-            match self.status {
-                DiscordStatus::NotConnected => {
-                    self.connect();
-                }
-                DiscordStatus::Connected => {
-                    self.handshake();
-                }
-                DiscordStatus::HandshakeOk => {
-                    self.authenticate();
-                }
-                DiscordStatus::Authenticated => {
-                   match self.get_voice_settings() {
-                        Some(vs) => {
-                            println!("muted: {}, deafen: {}", vs.0, vs.1);
-                        }
-                        None => {}
-                   }
-                }
+        match self.status {
+            DiscordStatus::NotConnected => {
+                self.connect();
+            }
+            DiscordStatus::Connected => {
+                self.handshake();
+            }
+            DiscordStatus::HandshakeOk => {
+                self.authenticate();
+            }
+            DiscordStatus::Authenticated => {
+            //    match self.get_voice_settings() {
+            //         Some(vs) => {
+            //             println!("muted: {}, deafen: {}", vs.0, vs.1);
+            //         }
+            //         None => {}
+            //    }
+                
             }
         }
+        
     }
 
+
+    pub fn is_connected(&mut self) -> bool{
+        match self.status {
+            DiscordStatus::Authenticated => true,
+            _ => false
+        } 
+    }
 
     pub fn get_voice_settings(&mut self) -> Option<(bool, bool)> {
         match self.status {

@@ -9,5 +9,8 @@ pub enum DiscordError {
     SerdeConvertionError,
     AuthorizationFailed,
     AuthenticationFailed,
-    NoDataFound
+    NoDataFound,
+    InternalChannelClosed,
+    ErrorClosingThread,
+    InvalidChanelMessage
 }

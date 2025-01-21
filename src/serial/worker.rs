@@ -1,7 +1,6 @@
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
-use std::thread::JoinHandle;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 
@@ -22,7 +21,7 @@ pub enum SerialWorkerStatus{
 pub struct SerialWorker{
     //port: Port,
     status: Arc<Mutex<SerialWorkerStatus>>,
-    thread: Option<JoinHandle<()>>,
+    thread: Option<thread::JoinHandle<()>>,
     tx: Option<Sender<SerialWorkerMessage>>,
     rx: Option<Receiver<SerialWorkerMessage>>
 }
@@ -76,7 +75,6 @@ impl SerialWorker {
                     SerialWorkerStatus::PortNotConnected => {
                         match port.auto_connect(9600, Duration::from_millis(100)) {
                             Ok(_) => {
-                                println!("Entro aca?");
                                 *st.lock().unwrap() = SerialWorkerStatus::PortConnected;   
                             }
                             Err(_) => {
@@ -103,7 +101,7 @@ impl SerialWorker {
                         }
                     }
                     Err(e) => {
-                        println!("Error: {}", e);
+                        // println!("Error: {}", e);
                     }
                 }
             }
@@ -120,15 +118,24 @@ impl SerialWorker {
                 tx.send(SerialWorkerMessage::Stop).unwrap();
             }
             None => {
-                //return err
+                return Err(SerialPortError::InternalChannelClosed);
             }
         }
 
         if let Some(handle) = self.thread.take() {
-            handle.join().unwrap();
-            self.thread = None;
+            match handle.join(){
+                Ok(_) => {
+                    self.thread = None;
+                }
+                Err(e) => {
+                    println!("Error cerrando thread: {:?}", e);
+                    return Err(SerialPortError::ErrorClosingThread);
+                }
+            }
+            
         }
 
         Ok(())
     }
+
 }
