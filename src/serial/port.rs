@@ -32,7 +32,7 @@ impl Port{
                 .flow_control(serialport::FlowControl::None)
                 .open() {
                     Ok(p) => {
-                        println!("Se cpenctp {}", port_name);
+                        println!("Se conecto al puerto: {}", port_name);
                         self.name = Some(String::from(port_name));
                         self.baudrate = baudrate;
                         self.timeout = timeout;
@@ -65,22 +65,64 @@ impl Port{
         Ok(ports)
     }
 
-
     pub fn auto_connect(&mut self, baudrate: u32, timeout: Duration) -> Result<(), SerialPortError> {
         let mut  available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
+            println!("Trying to connect to port {}", p);
             match self.connect(p.as_str(), baudrate, timeout) {
                 Ok(_) => { 
-                    println!("Conectado");
-                    return Ok(());
+                    match self.authenticate(){
+                        Ok(_) => {
+                            println!("Conectado OK: {}", p);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            println!("No se pudo autenticar, desconecto {}", p);
+                            self.disconnect();
+                            continue;
+                        }
+                    }
                 },
                 Err(e) => {
                     println!("{:?}", e);
                 }
             }
         }
+        Err(SerialPortError::PortNotConnected)
+    }
 
-        Ok(())
+    //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
+    pub fn authenticate(&mut self) -> Result<(), SerialPortError>{
+        match &mut self.port {
+            Some(p) => {
+                p.as_mut().write(b"PING\n");
+                
+                    let mut buf = Vec::new();
+                p.read_to_end(&mut buf);
+                let response = match String::from_utf8(buf) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Error de codificación UTF-8: {}", e);
+                        return Err(SerialPortError::PortNotConnected);
+                    }
+                };
+                if response != "PONG\r\n"{ 
+                    return Err(SerialPortError::PortNotConnected);
+                }
+                
+                Ok(())
+            }
+            None => {
+                Err(SerialPortError::PortNotConnected)
+            }
+        }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        match self.port {
+            Some(_) => true,
+            None => false
+        }
     }
 }

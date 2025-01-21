@@ -2,12 +2,14 @@ pub mod discord;
 pub mod config;
 pub mod serial;
 
-// use std::{thread, time};
+use std::{thread, time};
 
+// use core::time;
 use std::time::Duration;
 
 use discord::client::DiscordClient;
 use serial::port::Port;
+use serial::worker::SerialWorker;
 // use config::config::Config;
 
 
@@ -21,15 +23,23 @@ fn main(){
 
     // ds.connect_loop();
 
-    let mut port = Port::new();
+    // let mut port = Port::new();
 
-    let ports = port.get_ports().unwrap();
+    // let ports = port.get_ports().unwrap();
 
-    for p in ports {
-        println!("{}", p);
-    }
+    // for p in ports {
+    //     println!("{}", p);
+    // }
 
-    port.auto_connect(9600, Duration::from_millis(100));
+    // port.auto_connect(9600, Duration::from_millis(100));
+
+    let mut sw = SerialWorker::new();
+    sw.start(None);
+    
+thread::sleep(time::Duration::from_secs(15));
+
+    sw.stop();
+    
 
 }
 

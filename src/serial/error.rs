@@ -2,4 +2,5 @@
 pub enum SerialPortError {
     PortNotAvailable,
     PortAlreadyConnected,
+    PortNotConnected
 }
