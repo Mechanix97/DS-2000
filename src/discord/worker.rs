@@ -9,7 +9,8 @@ use crate::discord::client::*;
 
 pub enum DiscordWorkerMessage{
     Stop,
-    GetVoiceSettigs
+    GetVoiceSettigs,
+    SetVoiceSetting(bool,bool)
 }
 
 
@@ -85,10 +86,13 @@ impl DiscordWorker{
                                         None => {}
                                     }
                                 }
+                                DiscordWorkerMessage::SetVoiceSetting(m, d) => {
+                                    ds.set_voice_settings(m, d);
+                                }
                                 _ => {}
                             }
                         }
-                        Err(e) => {
+                        Err(e) => {//Ignore
                             // println!("Error: {}", e);
                         }
                     } 
@@ -143,27 +147,18 @@ impl DiscordWorker{
         let d =self.deafen.load(Ordering::SeqCst);// *self.deafen.get_mut();
 
         Ok((m,d))
-        // match &self.rx {
-        //     Some(rx) => {
-        //         match rx.recv_timeout(Duration::from_millis(100)){
-        //             Ok(msg) => {
-        //                 match msg {
-        //                     DiscordWorkerMessage::GetVoiceSettigsReply(m,d ) => {
-        //                         return Ok((m,d));
-        //                     }
-        //                     _ => {
-        //                         return Err(DiscordError::InvalidChanelMessage);
-        //                     }
-        //                 }
-        //             }
-        //             Err(e) => {
-        //                 return Err(DiscordError::InternalChannelClosed);
-        //             }
-        //         }
-        //     }
-        //     None => {
-        //         return Err(DiscordError::InternalChannelClosed);
-        //     }            
-        // }
     }
+
+    pub fn set_voice_settings(&mut self, m: bool, d: bool) -> Result<(), DiscordError>{
+        match &self.tx {
+            Some(tx) => {
+                tx.send(DiscordWorkerMessage::SetVoiceSetting(m, d)).unwrap();
+            }
+            None => {
+                return Err(DiscordError::InternalChannelClosed);
+            }
+        }
+        Ok(())
+    }
+
 }

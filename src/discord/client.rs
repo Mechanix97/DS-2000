@@ -181,5 +181,14 @@ impl DiscordClient {
         }
     }
 
+    pub fn set_voice_settings(&mut self, m: bool, d: bool )  {
+        match self.status {
+            DiscordStatus::Authenticated => {
+                self.ipc_client.set_voice_settings(m,d).unwrap();
+            }
+            
+            _ => {}
+        }
+    }
 
 }

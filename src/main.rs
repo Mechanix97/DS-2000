@@ -10,6 +10,7 @@ use std::time::Duration;
 use discord::worker::DiscordWorker;
 use serial::port::Port;
 use serial::worker::SerialWorker;
+use std::io::{self, Write};
 // use config::config::Config;
 
 
@@ -27,16 +28,45 @@ fn main(){
     ds.start();
     
 
+
+    let mut mute = false;
+    let mut deafen = false;
     for i in 0..1000{
-        thread::sleep(time::Duration::from_millis(100));
-        match ds.get_voice_settings(){
-            Ok((m, d)) => {
-                println!("{} muted: {} | deafen: {}",i, m, d);
-            }
-            Err(e) => {
-                println!("{}, {:?}",i,  e);
+        // thread::sleep(time::Duration::from_millis(100));
+        // match ds.get_voice_settings(){
+        //     Ok((m, d)) => {
+        //         println!("{} muted: {} | deafen: {}",i, m, d);
+        //         ds.set_voice_settings(!m, !d);
+        //     }
+        //     Err(e) => {
+        //         println!("{}, {:?}",i,  e);
+        //     }
+        // }
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+    
+        // Obtener el primer carácter si existe
+        if let Some(first_char) = input.trim().chars().next(){
+            (mute, deafen)=ds.get_voice_settings().unwrap();
+            match first_char {
+                'm' => {
+                    mute = !mute;
+                }
+                'd' =>{
+                    deafen = !deafen;
+                }
+                'q' => {
+                    break;
+                }
+                _ => {
+
+                }
             }
         }
+
+        ds.set_voice_settings(mute, deafen);
+        
     }
 
     ds.stop();
