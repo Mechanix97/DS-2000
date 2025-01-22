@@ -8,10 +8,10 @@ use std::{thread, time};
 use std::time::Duration;
 
 use discord::worker::DiscordWorker;
-use serial::port::Port;
-use serial::worker::SerialWorker;
-use std::io::{self, Write};
-// use config::config::Config;
+// use serial::port::Port;
+// use serial::worker::SerialWorker;
+ use std::io::{self};
+use config::config::Config;
 
 
 fn main(){
@@ -24,14 +24,18 @@ fn main(){
 
     // ds.connect_loop();
 
+    let mut config = Config::new();
+    config.load();
+
     let mut ds = DiscordWorker::new();
-    ds.start();
+    ds.start(config.discord_access_token).unwrap();
     
 
 
     let mut mute = false;
     let mut deafen = false;
-    for i in 0..1000{
+
+    for _i in 0..1000{
         // thread::sleep(time::Duration::from_millis(100));
         // match ds.get_voice_settings(){
         //     Ok((m, d)) => {
@@ -42,6 +46,8 @@ fn main(){
         //         println!("{}, {:?}",i,  e);
         //     }
         // }
+        config.discord_access_token = ds.get_config();
+        config.save();
 
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
@@ -57,6 +63,9 @@ fn main(){
                     
                     deafen = !deafen;
                 }
+                'w' => {
+                    ds.disconnect().unwrap();
+                }
                 'q' => {
                     break;
                 }
@@ -66,11 +75,11 @@ fn main(){
             }
         }
 
-        ds.set_voice_settings(mute || deafen, deafen);
+        ds.set_voice_settings(mute || deafen, deafen).unwrap();
         
     }
 
-    ds.stop();
+    ds.stop().unwrap();
 
     // let mut port = Port::new();
 

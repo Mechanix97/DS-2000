@@ -145,14 +145,7 @@ impl DiscordClient {
             DiscordStatus::HandshakeOk => {
                 self.authenticate();
             }
-            DiscordStatus::Authenticated => {
-            //    match self.get_voice_settings() {
-            //         Some(vs) => {
-            //             println!("muted: {}, deafen: {}", vs.0, vs.1);
-            //         }
-            //         None => {}
-            //    }
-                
+            DiscordStatus::Authenticated => {                
             }
         }
         
@@ -189,6 +182,21 @@ impl DiscordClient {
             
             _ => {}
         }
+    }
+
+    pub fn disconnect(&mut self) {
+        match self.status {
+            DiscordStatus::Authenticated => {
+                self.ipc_client.select_voice_channel(None).unwrap();
+            }
+            
+            _ => {}
+        }
+    }
+
+
+    pub fn get_token(&self) -> Option<String>{
+        self.token.clone()
     }
 
 }

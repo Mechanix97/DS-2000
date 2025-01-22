@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::discord::error::*;
 use crate::discord::client::*;
@@ -10,7 +10,8 @@ use crate::discord::client::*;
 pub enum DiscordWorkerMessage{
     Stop,
     GetVoiceSettigs,
-    SetVoiceSetting(bool,bool)
+    SetVoiceSetting(bool,bool),
+    Disconnect,
 }
 
 
@@ -19,7 +20,8 @@ pub struct DiscordWorker {
     tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
     rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
     muted: Arc<AtomicBool>,
-    deafen: Arc<AtomicBool>
+    deafen: Arc<AtomicBool>,
+    config: Arc<Mutex<Option<String>>>
 }
 
 
@@ -31,72 +33,80 @@ impl DiscordWorker{
             rx: None,
             muted: Arc::new(AtomicBool::new(false)),
             deafen: Arc::new(AtomicBool::new(false)),
+            config: Arc::new(Mutex::new(None))
         }
     }
 
 
-    pub fn start(&mut self) -> Result<(), DiscordError> {
+    pub fn start(&mut self, ds_token: Option<String>) -> Result<(), DiscordError> {
         let (tx, rx_thread) = mpsc::channel();
-        let (tx_thread, rx) = mpsc::channel(); 
+        //let (tx_thread, rx) = mpsc::channel(); 
+        
         self.tx = Some(tx);
-        self.rx = Some(rx);
-        // let mut st = self.status.clone();
+        //self.rx = Some(rx);
 
-        let mut muted = self.muted.clone();
-        let mut deafen = self.deafen.clone();
+        let muted = self.muted.clone();
+        let  deafen = self.deafen.clone();
+        let conf = self.config.clone();
 
         let t = thread::spawn(move || {
+
             let mut ds =  DiscordClient::new( //FIX this
-                    "713524519830028368".to_string(),
-                    Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),
-                    "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
-                    "https://www.mechardo3d.xyz/".to_string()
-                );
+                "713524519830028368".to_string(),
+                ds_token,
+                "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
+                "https://www.mechardo3d.xyz/".to_string()
+            );                
 
+            loop{
+                if !ds.is_connected(){
+                    ds.connect_loop();
+                    let t = ds.get_token();
+                    {
+                        *(conf.lock().unwrap()) = t;
+                    }
+                } else{
+                    match ds.get_voice_settings() {
+                        Some((m,d)) => {
+                            muted.store(m, Ordering::SeqCst);
+                            deafen.store(d, Ordering::SeqCst);
+                        }
+                        None => {}
+                    }
+                }
                 
-
-                loop{
-                    if !ds.is_connected(){
-                        ds.connect_loop();
-                    } else{
-                        match ds.get_voice_settings() {
-                            Some((m,d)) => {
-                                muted.store(m, Ordering::SeqCst);
-                                deafen.store(d, Ordering::SeqCst);
+                // println!("|En el proceso|Muted: {} | Deafen {}", muted, deafen);
+                // println!("Deafen: {}", deafen);
+                
+                match rx_thread.recv_timeout(Duration::from_millis(10)){
+                    Ok(msg) => {
+                        match msg {
+                            DiscordWorkerMessage::Stop => {
+                                break;
                             }
-                            None => {}
+                            DiscordWorkerMessage::GetVoiceSettigs => {
+                                match ds.get_voice_settings() {
+                                    Some((m,d)) => {
+                                        muted.store(m, Ordering::SeqCst);
+                                        deafen.store(d, Ordering::SeqCst);         
+                                    }
+                                    None => {}
+                                }
+                            }
+                            DiscordWorkerMessage::SetVoiceSetting(m, d) => {
+                                ds.set_voice_settings(m, d);
+                            }
+                            DiscordWorkerMessage::Disconnect => {
+                                ds.disconnect();
+                            }
+                            // _ => {}
                         }
                     }
-                    
-                    // println!("|En el proceso|Muted: {} | Deafen {}", muted, deafen);
-                    // println!("Deafen: {}", deafen);
-                    
-                    match rx_thread.recv_timeout(Duration::from_millis(10)){
-                        Ok(msg) => {
-                            match msg {
-                                DiscordWorkerMessage::Stop => {
-                                    break;
-                                }
-                                DiscordWorkerMessage::GetVoiceSettigs => {
-                                    match ds.get_voice_settings() {
-                                        Some((m,d)) => {
-                                            muted.store(m, Ordering::SeqCst);
-                                            deafen.store(d, Ordering::SeqCst);         
-                                        }
-                                        None => {}
-                                    }
-                                }
-                                DiscordWorkerMessage::SetVoiceSetting(m, d) => {
-                                    ds.set_voice_settings(m, d);
-                                }
-                                _ => {}
-                            }
-                        }
-                        Err(e) => {//Ignore
-                            // println!("Error: {}", e);
-                        }
-                    } 
-                }
+                    Err(_) => {//Ignore
+                        // println!("Error: {}", e);
+                    }
+                } 
+            }
         });
         self.thread = Some(t);
 
@@ -160,5 +170,27 @@ impl DiscordWorker{
         }
         Ok(())
     }
+
+    pub fn disconnect(&mut self) -> Result<(), DiscordError>{
+        match &self.tx {
+            Some(tx) => {
+                tx.send(DiscordWorkerMessage::Disconnect).unwrap();
+            }
+            None => {
+                return Err(DiscordError::InternalChannelClosed);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_config(&mut self) -> Option<String>{
+        
+        let c;
+        {
+            c = self.config.lock().unwrap().clone();
+        }
+        c
+    } 
 
 }
