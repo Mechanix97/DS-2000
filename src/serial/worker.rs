@@ -89,7 +89,7 @@ impl SerialWorker {
                         break;
                     }
                 }
-                match rx_thread.recv_timeout(Duration::from_millis(100)){
+                match rx_thread.recv_timeout(Duration::from_millis(10)){
                     Ok(msg) => {
                         match msg {
                             SerialWorkerMessage::Stop => {

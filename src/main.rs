@@ -54,6 +54,7 @@ fn main(){
                     mute = !mute;
                 }
                 'd' =>{
+                    
                     deafen = !deafen;
                 }
                 'q' => {
@@ -65,7 +66,7 @@ fn main(){
             }
         }
 
-        ds.set_voice_settings(mute, deafen);
+        ds.set_voice_settings(mute || deafen, deafen);
         
     }
 
