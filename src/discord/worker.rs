@@ -18,7 +18,7 @@ pub enum DiscordWorkerMessage{
 pub struct DiscordWorker {
     thread: Option<thread::JoinHandle<()>>,
     tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
-    rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
+    _rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
     muted: Arc<AtomicBool>,
     deafen: Arc<AtomicBool>,
     config: Arc<Mutex<Option<String>>>
@@ -30,7 +30,7 @@ impl DiscordWorker{
         DiscordWorker{
             thread: None,
             tx: None,
-            rx: None,
+            _rx: None,
             muted: Arc::new(AtomicBool::new(false)),
             deafen: Arc::new(AtomicBool::new(false)),
             config: Arc::new(Mutex::new(None))
@@ -40,10 +40,8 @@ impl DiscordWorker{
 
     pub fn start(&mut self, ds_token: Option<String>) -> Result<(), DiscordError> {
         let (tx, rx_thread) = mpsc::channel();
-        //let (tx_thread, rx) = mpsc::channel(); 
-        
+
         self.tx = Some(tx);
-        //self.rx = Some(rx);
 
         let muted = self.muted.clone();
         let  deafen = self.deafen.clone();
@@ -74,10 +72,7 @@ impl DiscordWorker{
                         None => {}
                     }
                 }
-                
-                // println!("|En el proceso|Muted: {} | Deafen {}", muted, deafen);
-                // println!("Deafen: {}", deafen);
-                
+                                
                 match rx_thread.recv_timeout(Duration::from_millis(10)){
                     Ok(msg) => {
                         match msg {
@@ -99,11 +94,9 @@ impl DiscordWorker{
                             DiscordWorkerMessage::Disconnect => {
                                 ds.disconnect();
                             }
-                            // _ => {}
                         }
                     }
                     Err(_) => {//Ignore
-                        // println!("Error: {}", e);
                     }
                 } 
             }

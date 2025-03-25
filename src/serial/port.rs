@@ -79,7 +79,7 @@ impl Port{
                         }
                         Err(e) => {
                             println!("No se pudo autenticar, desconecto {}", p);
-                            self.disconnect();
+                            self.disconnect().map_err(|_| e)?;
                             continue;
                         }
                     }
@@ -96,10 +96,10 @@ impl Port{
     pub fn authenticate(&mut self) -> Result<(), SerialPortError>{
         match &mut self.port {
             Some(p) => {
-                p.as_mut().write(b"PING\n");
+                p.as_mut().write(b"PING\n").map_err(|_| SerialPortError::PortNotConnected)?;
                 
-                    let mut buf = Vec::new();
-                p.read_to_end(&mut buf);
+                let mut buf = Vec::new();
+                p.read_to_end(&mut buf).map_err(|_| SerialPortError::PortNotConnected)?;
                 let response = match String::from_utf8(buf) {
                     Ok(s) => s,
                     Err(e) => {
