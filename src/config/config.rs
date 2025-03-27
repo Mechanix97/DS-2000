@@ -1,8 +1,7 @@
 use directories::BaseDirs;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -10,8 +9,7 @@ pub struct Config {
     pub discord_secret_key: Option<String>,
     pub discord_access_token: Option<String>,
     pub discord_refresh_token: Option<String>,
-    pub last_port_connected: Option<String>
-
+    pub last_port_connected: Option<String>,
 }
 
 impl Config {
@@ -25,23 +23,25 @@ impl Config {
         }
     }
 
-    pub fn load(&mut self){
+    pub fn load(&mut self) {
         if let Some(base_dirs) = BaseDirs::new() {
             let appdata_path = base_dirs.config_dir().join("Mechardo");
-            if !appdata_path.exists(){
+            if !appdata_path.exists() {
                 std::fs::create_dir_all(&appdata_path).unwrap();
                 return;
             }
             let config_file = appdata_path.join("ds-config.json");
-            if ! Path::new(&config_file).exists() {
+            if !Path::new(&config_file).exists() {
                 File::create(appdata_path.join("ds-config.json")).unwrap();
             }
             match File::open(config_file) {
                 Ok(f) => {
                     *self = serde_json::from_reader(f).unwrap();
                 }
-                Err(e) => {println!("Error: {}", e);}
-            };            
+                Err(e) => {
+                    println!("Error: {}", e);
+                }
+            };
         }
     }
 
@@ -69,6 +69,6 @@ impl Config {
     // }
 
     // pub fn get_last_port_connected(&self) -> Option<String> {
-    //     self.last_port_connected            
+    //     self.last_port_connected
     // }
 }

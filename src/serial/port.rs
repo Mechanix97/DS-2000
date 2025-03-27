@@ -3,34 +3,39 @@ use std::time::Duration;
 
 use crate::serial::error::*;
 
-pub struct Port{
+pub struct Port {
     name: Option<String>,
     baudrate: u32,
     timeout: Duration,
-    port: Option<Box<dyn SerialPort>>
+    port: Option<Box<dyn SerialPort>>,
 }
 
-
-impl Port{
-    pub fn new() -> Port{
-        Port{
+impl Port {
+    pub fn new() -> Port {
+        Port {
             name: None,
             baudrate: 0,
             timeout: Duration::from_millis(0),
-            port: None
+            port: None,
         }
     }
 
-    pub fn connect(&mut self, port_name: &str, baudrate: u32, timeout: Duration) -> Result<(), SerialPortError>{
+    pub fn connect(
+        &mut self,
+        port_name: &str,
+        baudrate: u32,
+        timeout: Duration,
+    ) -> Result<(), SerialPortError> {
         match self.port {
             Some(_) => {
                 return Err(SerialPortError::PortAlreadyConnected);
             }
             None => {
                 match serialport::new(port_name, baudrate)
-                .timeout(timeout)
-                .flow_control(serialport::FlowControl::None)
-                .open() {
+                    .timeout(timeout)
+                    .flow_control(serialport::FlowControl::None)
+                    .open()
+                {
                     Ok(p) => {
                         println!("Se conecto al puerto: {}", port_name);
                         self.name = Some(String::from(port_name));
@@ -44,7 +49,7 @@ impl Port{
                         return Err(SerialPortError::PortNotAvailable);
                     }
                 }
-            }   
+            }
         }
     }
 
@@ -56,7 +61,6 @@ impl Port{
         Ok(())
     }
 
-
     pub fn get_ports(&self) -> Result<Vec<String>, SerialPortError> {
         let mut ports = vec![];
         for port in serialport::available_ports().unwrap() {
@@ -65,23 +69,25 @@ impl Port{
         Ok(ports)
     }
 
-    pub fn auto_connect(&mut self, baudrate: u32, timeout: Duration) -> Result<(), SerialPortError> {
-        let mut  available_ports = self.get_ports()?;
+    pub fn auto_connect(
+        &mut self,
+        baudrate: u32,
+        timeout: Duration,
+    ) -> Result<(), SerialPortError> {
+        let mut available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
             println!("Trying to connect to port {}", p);
             match self.connect(p.as_str(), baudrate, timeout) {
-                Ok(_) => { 
-                    match self.authenticate(){
-                        Ok(_) => {
-                            println!("Conectado OK: {}", p);
-                            return Ok(());
-                        }
-                        Err(e) => {
-                            println!("No se pudo autenticar, desconecto {}", p);
-                            self.disconnect().map_err(|_| e)?;
-                            continue;
-                        }
+                Ok(_) => match self.authenticate() {
+                    Ok(_) => {
+                        println!("Conectado OK: {}", p);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        println!("No se pudo autenticar, desconecto {}", p);
+                        self.disconnect().map_err(|_| e)?;
+                        continue;
                     }
                 },
                 Err(e) => {
@@ -93,13 +99,16 @@ impl Port{
     }
 
     //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
-    pub fn authenticate(&mut self) -> Result<(), SerialPortError>{
+    pub fn authenticate(&mut self) -> Result<(), SerialPortError> {
         match &mut self.port {
             Some(p) => {
-                p.as_mut().write(b"PING\n").map_err(|_| SerialPortError::PortNotConnected)?;
-                
+                p.as_mut()
+                    .write(b"PING\n")
+                    .map_err(|_| SerialPortError::PortNotConnected)?;
+
                 let mut buf = Vec::new();
-                p.read_to_end(&mut buf).map_err(|_| SerialPortError::PortNotConnected)?;
+                p.read_to_end(&mut buf)
+                    .map_err(|_| SerialPortError::PortNotConnected)?;
                 let response = match String::from_utf8(buf) {
                     Ok(s) => s,
                     Err(e) => {
@@ -107,22 +116,20 @@ impl Port{
                         return Err(SerialPortError::PortNotConnected);
                     }
                 };
-                if response != "PONG\r\n"{ 
+                if response != "PONG\r\n" {
                     return Err(SerialPortError::PortNotConnected);
                 }
-                
+
                 Ok(())
             }
-            None => {
-                Err(SerialPortError::PortNotConnected)
-            }
+            None => Err(SerialPortError::PortNotConnected),
         }
     }
 
     pub fn is_connected(&self) -> bool {
         match self.port {
             Some(_) => true,
-            None => false
+            None => false,
         }
     }
 }
