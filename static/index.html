@@ -3,10 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi App Tauri</title>
+    <title>Fake Discord</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>¡Hola, Tauri!</h1>
-    <p>Este es un frontend simple con HTML.</p>
+    <div class="container">
+        <!-- Sidebar (Servidores) -->
+        <div class="sidebar">
+            <div class="server-icon">D</div>
+            <div class="server-icon">+</div>
+        </div>
+
+        <!-- Lista de canales -->
+        <div class="channel-list">
+            <h3>Canales</h3>
+            <ul>
+                <li># general</li>
+                <li># memes</li>
+                <li># música</li>
+            </ul>
+        </div>
+
+        <!-- Chat -->
+        <div class="chat">
+            <div class="chat-header"># general</div>
+            <div class="chat-messages">
+                <div class="message">
+                    <span class="username">Lucas:</span> Hola, esto es un chat falso.
+                </div>
+                <div class="message">
+                    <span class="username">Bot:</span> ¡Bienvenido a Fake Discord!
+                </div>
+            </div>
+            <input type="text" class="chat-input" placeholder="Escribe un mensaje...">
+        </div>
+    </div>
 </body>
 </html>
