@@ -12,14 +12,12 @@
         "windows": [
         {
             "title": "DS-2000",
-            "width": 600,
-            "height": 400,
+            "width": 700,
+            "height":500,
             "resizable": false,
+            "maximizable":false,
             "fullscreen": false
         }
-        ],
-        "security": {
-            "csp": null
-        }
+        ]
     }
 }
