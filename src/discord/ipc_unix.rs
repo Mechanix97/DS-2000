@@ -1,12 +1,14 @@
-use serde_json::Value;
-use std::collections::HashMap;
-use std::io::{Read, Write};
+// use serde_json::Value;
+// use std::collections::HashMap;
+// use std::io::{Read, Write};
+use std::{env::var, os::unix::net::UnixStream};
+
 
 use crate::discord::error::*;
-use crate::discord::pipemessage::*;
+// use crate::discord::pipemessage::*;
 
 pub struct IPCClient {
-    client_pipe: Option<u32>,
+    client_pipe: Option<UnixStream>,
     client_id: Option<String>,
 }
 
@@ -19,7 +21,28 @@ impl IPCClient {
     }
 
     pub fn connect(&mut self) -> Result<(), DiscordError> {
-        Ok(())
+        let mut sub_path = None;    
+        for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]{
+            if let Ok(env_var) = var(key){
+                sub_path = Some(env_var);
+            }
+        }
+        match sub_path {
+            None => { return Err(DiscordError::PipeConnectionFailed); }
+            Some(sp) => {
+                for i in 0..10 {
+                    let pipe_name = format!("{}discord-ipc-{}", sp, i);
+                    match UnixStream::connect(&pipe_name) {
+                        Err(_) => {continue;}
+                        Ok(pipe) =>{
+                            self.client_pipe = Some(pipe);
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+        Err(DiscordError::PipeConnectionFailed)
     }
 
     pub fn read_message(&mut self) -> Result<(), DiscordError> {
