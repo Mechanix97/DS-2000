@@ -18,6 +18,9 @@ use std::io::{self};
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    let mut config = Config::new();
+    config.load();
+
     let mut ds = DiscordClient::new(
         "713524519830028368".to_string(),
         Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),

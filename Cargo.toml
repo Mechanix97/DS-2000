@@ -17,6 +17,7 @@ serialport = "4.7"
 tauri = { version = "2.4.0", features = [] }
 tauri-plugin-log = "2.0.0-rc"
 log = "0.4"
+dotenvy= "0.15"
 
 [target.'cfg(windows)'.dependencies]
 named_pipe = "0.4"
