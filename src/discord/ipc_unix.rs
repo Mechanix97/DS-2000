@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::{env::var, os::unix::net::UnixStream};
 
-
 use crate::discord::error::*;
 use crate::discord::pipemessage::*;
 
@@ -21,20 +20,24 @@ impl IPCClient {
     }
 
     pub fn connect(&mut self) -> Result<(), DiscordError> {
-        let mut sub_path = None;    
-        for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]{
-            if let Ok(env_var) = var(key){
+        let mut sub_path = None;
+        for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
+            if let Ok(env_var) = var(key) {
                 sub_path = Some(env_var);
             }
         }
         match sub_path {
-            None => { return Err(DiscordError::PipeConnectionFailed); }
+            None => {
+                return Err(DiscordError::PipeConnectionFailed);
+            }
             Some(sp) => {
                 for i in 0..10 {
                     let pipe_name = format!("{}discord-ipc-{}", sp, i);
                     match UnixStream::connect(&pipe_name) {
-                        Err(_) => {continue;}
-                        Ok(pipe) =>{
+                        Err(_) => {
+                            continue;
+                        }
+                        Ok(pipe) => {
                             self.client_pipe = Some(pipe);
                             return Ok(());
                         }
@@ -89,9 +92,10 @@ impl IPCClient {
         match &mut self.client_pipe {
             Some(cp) => match cp.write_all(&hm.to_buff()) {
                 Ok(_) => {}
-                Err(e) =>{ 
+                Err(e) => {
                     println!("Errr sendind HM: {:?}", e);
-                    return Err(DiscordError::PipeWriteError);},
+                    return Err(DiscordError::PipeWriteError);
+                }
             },
             None => return Err(DiscordError::PipeNotConnected),
         }

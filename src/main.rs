@@ -7,8 +7,8 @@ use std::{thread, time};
 // use core::time;
 use std::time::Duration;
 
-use discord::worker::DiscordWorker;
 use discord::client::DiscordClient;
+use discord::worker::DiscordWorker;
 // use serial::port::Port;
 // use serial::worker::SerialWorker;
 use config::config::Config;
@@ -21,45 +21,62 @@ fn main() {
     let mut config = Config::new();
     config.load();
 
-    let mut ds = DiscordClient::new(
-        "713524519830028368".to_string(),
-        Some("S8ngQYkWFytsdOsr0W1ULVlo9XQk2y".to_string()),
-        "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
-        "https://www.mechardo3d.xyz/".to_string()
-    );
-
-    while !ds.is_connected(){
-        ds.connect_loop();
-    }
+    let mut ds = DiscordWorker::new();
+    ds.start(config.discord_access_token).unwrap();
+    
 
 
-    for i in 0..1000{
-        thread::sleep(time::Duration::from_millis(100));
-        match ds.get_voice_settings(){
-            Some((m, d)) => {
-                println!("{} muted: {} | deafen: {}",i, m, d);
-                // ds.set_voice_settings(!m, !d);
-            }
-            None => {
-                println!("{}",i);
+    let mut mute = false;
+    let mut deafen = false;
+
+    for _i in 0..1000{
+        config.discord_access_token = ds.get_config();
+        config.save();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+    
+        if let Some(first_char) = input.trim().chars().next(){
+            (mute, deafen)=ds.get_voice_settings().unwrap();
+            match first_char {
+                'm' => {
+                    mute = !mute;
+                }
+                'd' =>{
+                    
+                    deafen = !deafen;
+                }
+                'w' => {
+                    ds.disconnect().unwrap();
+                }
+                'q' => {
+                    break;
+                }
+                _ => {
+
+                }
             }
         }
+
+        ds.set_voice_settings(mute || deafen, deafen).unwrap();
+        
     }
 
+    ds.stop().unwrap();
+
     if false {
-    tauri::Builder::default()
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        
-        .expect("error while running tauri application");
+        tauri::Builder::default()
+            .setup(|app| {
+                if cfg!(debug_assertions) {
+                    app.handle().plugin(
+                        tauri_plugin_log::Builder::default()
+                            .level(log::LevelFilter::Info)
+                            .build(),
+                    )?;
+                }
+                Ok(())
+            })
+            .run(tauri::generate_context!())
+            .expect("error while running tauri application");
     }
 }

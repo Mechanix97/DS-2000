@@ -1,9 +1,9 @@
 use crate::discord::error::*;
 
-#[cfg(windows)]
-use crate::discord::ipc_windows::*;
 #[cfg(unix)]
 use crate::discord::ipc_unix::*;
+#[cfg(windows)]
+use crate::discord::ipc_windows::*;
 
 #[derive(Debug)]
 pub enum DiscordStatus {
