@@ -4,5 +4,6 @@ pub enum SerialPortError {
     PortAlreadyConnected,
     PortNotConnected,
     InternalChannelClosed,
-    ErrorClosingThread
+    ErrorClosingThread,
+    TimedOut
 }

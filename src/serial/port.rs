@@ -1,5 +1,7 @@
 use serialport::SerialPort;
 use std::time::Duration;
+use std::io::BufReader;
+use std::{sync::{Arc, RwLock}, io::BufRead};
 
 use crate::serial::error::*;
 
@@ -98,7 +100,7 @@ impl Port{
             Some(p) => {
                 p.as_mut().write(b"PING\n");
                 
-                    let mut buf = Vec::new();
+                let mut buf = Vec::new();
                 p.read_to_end(&mut buf);
                 let response = match String::from_utf8(buf) {
                     Ok(s) => s,
@@ -123,6 +125,29 @@ impl Port{
         match self.port {
             Some(_) => true,
             None => false
+        }
+    }
+
+    pub fn read_line(&mut self) -> Result<String, SerialPortError> {
+        match &mut self.port {
+            Some(p) => {
+                let mut reader = BufReader::new(p.try_clone().unwrap());
+                let mut my_str = String::new();
+                match reader.read_line(&mut my_str) {
+                    Ok(_) => {
+                        return Ok(my_str);
+                    }
+                    Err(e) => {
+                        if e.kind() != std::io::ErrorKind::TimedOut {
+                            println!("Otro error: {}", e.kind());
+                        }
+                        return Err(SerialPortError::TimedOut);
+                    }
+                }               
+            }
+            None => {
+                Err(SerialPortError::PortNotConnected)
+            }
         }
     }
 }
