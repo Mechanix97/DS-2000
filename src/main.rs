@@ -25,9 +25,23 @@ fn main() {
         "https://www.mechardo3d.xyz/".to_string()
     );
 
-    ds.connect();
+    while !ds.is_connected(){
+        ds.connect_loop();
+    }
 
-    ds.handshake();
+
+    for i in 0..1000{
+        thread::sleep(time::Duration::from_millis(100));
+        match ds.get_voice_settings(){
+            Some((m, d)) => {
+                println!("{} muted: {} | deafen: {}",i, m, d);
+                // ds.set_voice_settings(!m, !d);
+            }
+            None => {
+                println!("{}",i);
+            }
+        }
+    }
 
     if false {
     tauri::Builder::default()
