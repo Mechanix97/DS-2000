@@ -4,18 +4,18 @@ use crate::discord::utils::*;
 pub struct PipeMessage {
     pub opcode: Opcode,
     pub length: u32,
-    pub payload: Option<String>
+    pub payload: Option<String>,
 }
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Opcode{
+pub enum Opcode {
     Handshake = 0,
     Frame = 1,
     Close = 2,
     Ping = 3,
     Pong = 4,
-    Error = 999
+    Error = 999,
 }
 
 impl Opcode {
@@ -26,34 +26,31 @@ impl Opcode {
             2 => Opcode::Close,
             3 => Opcode::Ping,
             4 => Opcode::Pong,
-            _ => Opcode::Error
+            _ => Opcode::Error,
         }
     }
 }
 
 impl PipeMessage {
-    pub fn new(oc: Opcode, pl: &str) -> Self{
+    pub fn new(oc: Opcode, pl: &str) -> Self {
         Self {
             opcode: oc,
             length: pl.len() as u32,
-            payload: Some(pl.to_string())  
+            payload: Some(pl.to_string()),
         }
     }
 
-    pub fn handshake(client_id: &str) -> Self{
-        let pl: String = format!(
-            r#"{{"v": 1,"client_id": "{}"}}"#,
-            client_id
-        );
-        Self {  
+    pub fn handshake(client_id: &str) -> Self {
+        let pl: String = format!(r#"{{"v": 1,"client_id": "{}"}}"#, client_id);
+        Self {
             opcode: Opcode::Handshake,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
 
     pub fn to_buff(&self) -> Vec<u8> {
-        let mut message: Vec<u8>  = Vec::new();
+        let mut message: Vec<u8> = Vec::new();
 
         message.extend(&(self.opcode as u32).to_le_bytes());
         message.extend(&self.length.to_le_bytes());
@@ -69,10 +66,10 @@ impl PipeMessage {
             client_id,
             scopes
         );
-        Self {  
+        Self {
             opcode: Opcode::Frame,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
 
@@ -82,10 +79,10 @@ impl PipeMessage {
             generate_nonce(36),
             token
         );
-        Self {  
+        Self {
             opcode: Opcode::Frame,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
 
@@ -94,10 +91,10 @@ impl PipeMessage {
             r#"{{"nonce": "{}", "cmd": "GET_VOICE_SETTINGS"}}"#,
             generate_nonce(36)
         );
-        Self {  
+        Self {
             opcode: Opcode::Frame,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
 
@@ -108,13 +105,12 @@ impl PipeMessage {
             muted,
             deafed
         );
-        Self {  
+        Self {
             opcode: Opcode::Frame,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
-    
 
     pub fn select_voice_channel(channel_id: Option<String>) -> Self {
         let pl: String = format!(
@@ -122,14 +118,13 @@ impl PipeMessage {
             generate_nonce(36),
             match channel_id {
                 Some(c) => format!(r#""{}""#, c),
-                None => "null".to_string()
+                None => "null".to_string(),
             }
         );
-        Self {  
+        Self {
             opcode: Opcode::Frame,
-            length: pl.len() as u32, 
-            payload: Some(pl) 
+            length: pl.len() as u32,
+            payload: Some(pl),
         }
     }
-
 }

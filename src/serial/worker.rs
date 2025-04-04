@@ -1,25 +1,27 @@
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
+
 use std::sync::atomic::{AtomicBool, Ordering};
+
 
 use crate::serial::error::*;
 use crate::serial::port::*;
 
-pub enum SerialWorkerMessage{
-    Stop
+pub enum SerialWorkerMessage {
+    Stop,
 }
 
 #[derive(Clone, Copy)]
-pub enum SerialWorkerStatus{
+pub enum SerialWorkerStatus {
     PortConnected,
     PortNotConnected,
-    Stopped
+    Stopped,
 }
 
-pub struct SerialWorker{
+pub struct SerialWorker {
     //port: Port,
     status: Arc<Mutex<SerialWorkerStatus>>,
     thread: Option<thread::JoinHandle<()>>,
@@ -28,8 +30,8 @@ pub struct SerialWorker{
     muted: Arc<AtomicBool>,
     deafen: Arc<AtomicBool>,
     disconnect: Arc<AtomicBool>,
-}
 
+}
 
 impl SerialWorker {
     pub fn new() -> SerialWorker{
@@ -44,8 +46,7 @@ impl SerialWorker {
         }
     }
 
-
-    pub fn start(&mut self, port_name: Option<String>) -> Result<(), SerialPortError>{
+    pub fn start(&mut self, port_name: Option<String>) -> Result<(), SerialPortError> {
         let (tx, rx_thread) = mpsc::channel();
         let (_tx_thread, rx) = mpsc::channel(); 
         self.tx = Some(tx);
@@ -68,15 +69,16 @@ impl SerialWorker {
                             println!("Conectado");
                             *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
                         }
-                        Err(_e) => { //No se pudo conectar al puerto
+                        Err(_e) => {
+                            //No se pudo conectar al puerto
                             *st.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
                         }
-                    }                    
+                    }
                 }
                 None => {} //Si no hay paramatro, entonces no habia configuracion guardada
             }
 
-            loop{
+            loop {
                 let current_status;
                 {
                     current_status = *st.lock().unwrap();
@@ -86,10 +88,10 @@ impl SerialWorker {
                     SerialWorkerStatus::PortNotConnected => {
                         match port.auto_connect(9600, Duration::from_millis(100)) {
                             Ok(_) => {
-                                *st.lock().unwrap() = SerialWorkerStatus::PortConnected;   
+                                *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
                             }
                             Err(_) => {
-                                *st.lock().unwrap() = SerialWorkerStatus::PortNotConnected;    
+                                *st.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
                             }
                         }
                     }
@@ -130,17 +132,15 @@ impl SerialWorker {
                         break;
                     }
                 }
-                match rx_thread.recv_timeout(Duration::from_millis(10)){
-                    Ok(msg) => {
-                        match msg {
-                            SerialWorkerMessage::Stop => {
-                                if port.is_connected(){
-                                    port.disconnect().unwrap();
-                                }
-                                break;
+                match rx_thread.recv_timeout(Duration::from_millis(10)) {
+                    Ok(msg) => match msg {
+                        SerialWorkerMessage::Stop => {
+                            if port.is_connected() {
+                                port.disconnect().unwrap();
                             }
+                            break;
                         }
-                    }
+                    },
                     Err(e) => {
                         // println!("Error: {}", e);
                     }
@@ -152,8 +152,7 @@ impl SerialWorker {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<(), SerialPortError>{
-
+    pub fn stop(&mut self) -> Result<(), SerialPortError> {
         match &self.tx {
             Some(tx) => {
                 tx.send(SerialWorkerMessage::Stop).unwrap();
@@ -164,7 +163,7 @@ impl SerialWorker {
         }
 
         if let Some(handle) = self.thread.take() {
-            match handle.join(){
+            match handle.join() {
                 Ok(_) => {
                     self.thread = None;
                 }
@@ -173,11 +172,11 @@ impl SerialWorker {
                     return Err(SerialPortError::ErrorClosingThread);
                 }
             }
-            
         }
 
         Ok(())
     }
+
     
     fn parse_message(&self, line: &String) {
         match line.as_str() {

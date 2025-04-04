@@ -12,5 +12,5 @@ pub enum DiscordError {
     NoDataFound,
     InternalChannelClosed,
     ErrorClosingThread,
-    InvalidChanelMessage
+    InvalidChanelMessage,
 }

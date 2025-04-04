@@ -1,6 +1,11 @@
-pub mod ipc;
+pub mod client;
 pub mod error;
 pub mod pipemessage;
 pub mod utils;
 pub mod worker;
-pub mod client;
+
+#[cfg(unix)]
+pub mod ipc_unix;
+
+#[cfg(windows)]
+pub mod ipc_windows;
