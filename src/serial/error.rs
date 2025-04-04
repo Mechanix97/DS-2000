@@ -5,4 +5,5 @@ pub enum SerialPortError {
     PortNotConnected,
     InternalChannelClosed,
     ErrorClosingThread,
+    TimedOut
 }
