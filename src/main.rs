@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use discord::client::DiscordClient;
 use discord::worker::DiscordWorker;
-
+use serial::worker::SerialWorker;
 use config::config::Config;
 use std::io::{self};
 
