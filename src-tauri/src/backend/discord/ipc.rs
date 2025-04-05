@@ -1,7 +1,10 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::{env::var, os::unix::net::UnixStream};
+#[cfg(windows)]
+use named_pipe::PipeClient;
 
 use crate::backend::discord::error::*;
 use crate::backend::discord::pipemessage::*;
@@ -11,7 +14,7 @@ pub struct IPCClient {
     client_pipe: Option<UnixStream>,
 
     #[cfg(windows)]
-    client_pipe: Option<UnixStream>,
+    client_pipe: Option<PipeClient>,
 
     client_id: Option<String>,
 }

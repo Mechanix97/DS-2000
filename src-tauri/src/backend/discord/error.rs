@@ -11,6 +11,5 @@ pub enum DiscordError {
     AuthenticationFailed,
     NoDataFound,
     InternalChannelClosed,
-    ErrorClosingThread,
-    InvalidChanelMessage,
+    ErrorClosingThread
 }
