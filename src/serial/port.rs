@@ -1,7 +1,10 @@
 use serialport::SerialPort;
-use std::time::Duration;
 use std::io::BufReader;
-use std::{sync::{Arc, RwLock}, io::BufRead};
+use std::time::Duration;
+use std::{
+    io::BufRead,
+    sync::{Arc, RwLock},
+};
 
 use crate::serial::error::*;
 
@@ -150,11 +153,9 @@ impl Port {
                         }
                         return Err(SerialPortError::TimedOut);
                     }
-                }               
+                }
             }
-            None => {
-                Err(SerialPortError::PortNotConnected)
-            }
+            None => Err(SerialPortError::PortNotConnected),
         }
     }
 }

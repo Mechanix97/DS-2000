@@ -144,7 +144,7 @@ impl DiscordWorker {
         match &self.tx {
             Some(tx) => {
                 tx.send(DiscordWorkerMessage::SetVoiceSetting(m, d))
-                    .unwrap();
+                .map_err(|_| DiscordError::InternalChannelClosed)?
             }
             None => {
                 return Err(DiscordError::InternalChannelClosed);

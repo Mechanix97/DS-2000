@@ -25,7 +25,7 @@ impl Config {
     pub fn new() -> Self {
         dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         Self {
-            discord_client_id: None, 
+            discord_client_id: None,
             discord_secret_key: None,
             discord_access_token: None,
             discord_refresh_token: None,
@@ -70,11 +70,13 @@ impl Config {
 
                         *self = serde_json::from_slice(&decrypted).expect("Failed to parse JSON");
 
-                        if self.discord_client_id.is_none(){
-                            self.discord_client_id = Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
+                        if self.discord_client_id.is_none() {
+                            self.discord_client_id =
+                                Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
                         }
                         if self.discord_secret_key.is_none() {
-                            self.discord_secret_key = Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
+                            self.discord_secret_key =
+                                Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
                         }
                     }
                     Err(_) => {
