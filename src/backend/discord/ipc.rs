@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::{env::var, os::unix::net::UnixStream};
 
-use crate::discord::error::*;
-use crate::discord::pipemessage::*;
+use crate::backend::discord::error::*;
+use crate::backend::discord::pipemessage::*;
 
 pub struct IPCClient {
     #[cfg(unix)]

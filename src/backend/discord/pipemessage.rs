@@ -1,4 +1,4 @@
-use crate::discord::utils::*;
+use crate::backend::discord::utils::*;
 
 #[derive(Debug)]
 pub struct PipeMessage {

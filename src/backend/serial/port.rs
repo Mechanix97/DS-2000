@@ -1,12 +1,9 @@
 use serialport::SerialPort;
 use std::io::BufReader;
 use std::time::Duration;
-use std::{
-    io::BufRead,
-    sync::{Arc, RwLock},
-};
+use std::io::BufRead;
 
-use crate::serial::error::*;
+use crate::backend::serial::error::*;
 
 pub struct Port {
     name: Option<String>,

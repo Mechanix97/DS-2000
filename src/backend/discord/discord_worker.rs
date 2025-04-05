@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::discord::client::*;
-use crate::discord::error::*;
+use crate::backend::discord::client::*;
+use crate::backend::discord::error::*;
 
 pub enum DiscordWorkerMessage {
     Stop,

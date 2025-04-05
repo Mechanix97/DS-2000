@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::serial::error::*;
-use crate::serial::port::*;
+use crate::backend::serial::error::*;
+use crate::backend::serial::port::*;
 
 pub enum SerialWorkerMessage {
     Stop,
 }
+
 
 #[derive(Clone, Copy)]
 pub enum SerialWorkerStatus {
@@ -21,7 +22,6 @@ pub enum SerialWorkerStatus {
 }
 
 pub struct SerialWorker {
-    //port: Port,
     status: Arc<Mutex<SerialWorkerStatus>>,
     thread: Option<thread::JoinHandle<()>>,
     tx: Option<Sender<SerialWorkerMessage>>,
@@ -62,7 +62,6 @@ impl SerialWorker {
                 Some(p) => {
                     match port.connect(p.as_str(), 9600, Duration::from_millis(100)) {
                         Ok(_) => {
-                            println!("Conectado");
                             *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
                         }
                         Err(_e) => {
@@ -152,9 +151,7 @@ impl SerialWorker {
                             break;
                         }
                     },
-                    Err(e) => {
-                        // println!("Error: {}", e);
-                    }
+                    Err(_) => {}
                 }
             }
         });
