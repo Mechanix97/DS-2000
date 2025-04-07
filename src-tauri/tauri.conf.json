@@ -18,5 +18,14 @@
         "visible": true
       }
     ]
+  },
+  "bundle": {
+    "icon": ["icons/icon.ico"],
+    "targets": ["msi"],    
+    "windows": {
+      "wix": {
+        "language": "es-ES"
+      }
+    }
   }
 }
