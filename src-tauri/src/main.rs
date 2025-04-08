@@ -1,17 +1,9 @@
 mod backend;
 mod config;
+mod controller;
 
-use backend::discord::discord_worker::*;
-use backend::serial::serial_worker::*;
-use config::*;
-
-use std::io::{self};
-
-
-#[tauri::command]
-fn hacer_algo(nombre: String) {
-    println!("Hola, {}!", nombre);
-}
+use controller::*;
+use std::sync::Mutex;
 
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
@@ -19,6 +11,7 @@ fn hacer_algo(nombre: String) {
 fn main() {
 
     tauri::Builder::default()
+        .manage(Mutex::new(Controller::new()))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -29,54 +22,55 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![hacer_algo])
+        .invoke_handler(tauri::generate_handler![controller::hacer_algo])
+        .invoke_handler(tauri::generate_handler![controller::ds_set_voice_settings_command])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 
-    let mut config = Config::new();
-    config.load();
+    // let mut config = Config::new();
+    // config.load();
 
-    let mut ds = DiscordWorker::new();
-    ds.start(config.discord_access_token).unwrap();
+    // let mut ds = DiscordWorker::new();
+    // ds.start(config.discord_access_token).unwrap();
 
-    let mut _sw = SerialWorker::new();
-    // sw.start(config.last_port_connected.clone()).unwrap();
+    // let mut _sw = SerialWorker::new();
+    // // sw.start(config.last_port_connected.clone()).unwrap();
 
-    let mut mute;
-    let mut deafen;
+    // let mut mute;
+    // let mut deafen;
 
-    for _i in 0..1000 {
-        config.discord_access_token = ds.get_config();
-        config.save();
+    // for _i in 0..1000 {
+    //     config.discord_access_token = ds.get_config();
+    //     config.save();
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+    //     let mut input = String::new();
+    //     io::stdin().read_line(&mut input).unwrap();
 
-        if let Some(first_char) = input.trim().chars().next() {
-            (mute, deafen) = ds.get_voice_settings().unwrap();
-            match first_char {
-                'm' => {
-                    mute = !mute;
-                    ds.set_voice_settings(mute, deafen).unwrap();
-                }
-                'd' => {
-                    deafen = !deafen;
-                    ds.set_voice_settings(mute || deafen, deafen).unwrap();
-                }
-                'w' => {
-                    ds.disconnect().unwrap();
-                }
-                'q' => {
-                    break;
-                }
-                _ => {}
-            }
-        }
+    //     if let Some(first_char) = input.trim().chars().next() {
+    //         (mute, deafen) = ds.get_voice_settings().unwrap();
+    //         match first_char {
+    //             'm' => {
+    //                 mute = !mute;
+    //                 ds.set_voice_settings(mute, deafen).unwrap();
+    //             }
+    //             'd' => {
+    //                 deafen = !deafen;
+    //                 ds.set_voice_settings(mute || deafen, deafen).unwrap();
+    //             }
+    //             'w' => {
+    //                 ds.disconnect().unwrap();
+    //             }
+    //             'q' => {
+    //                 break;
+    //             }
+    //             _ => {}
+    //         }
+    //     }
 
-        // if sw.get_disconenct() {
-        //     ds.disconnect().unwrap();
-        // }
-    }
+    //     // if sw.get_disconenct() {
+    //     //     ds.disconnect().unwrap();
+    //     // }
+    // }
 
-    ds.stop().unwrap();
+    // ds.stop().unwrap();
 }

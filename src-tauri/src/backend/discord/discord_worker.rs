@@ -19,8 +19,7 @@ pub struct DiscordWorker {
     tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
     _rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
     muted: Arc<AtomicBool>,
-    deafen: Arc<AtomicBool>,
-    config: Arc<Mutex<Option<String>>>,
+    deafen: Arc<AtomicBool>
 }
 
 impl DiscordWorker {
@@ -30,8 +29,7 @@ impl DiscordWorker {
             tx: None,
             _rx: None,
             muted: Arc::new(AtomicBool::new(false)),
-            deafen: Arc::new(AtomicBool::new(false)),
-            config: Arc::new(Mutex::new(None)),
+            deafen: Arc::new(AtomicBool::new(false))
         }
     }
 
@@ -42,24 +40,19 @@ impl DiscordWorker {
 
         let muted = self.muted.clone();
         let deafen = self.deafen.clone();
-        let conf = self.config.clone();
 
         let t = thread::spawn(move || {
             let mut ds = DiscordClient::new(
                 //FIX this
                 "713524519830028368".to_string(),
                 ds_token,
-                "4Xqsf4ELABGEph3ZsmaaIp3Urr60Ikzp".to_string(),
+                "peK01dg65Qa97Bu3tL3VgPF8DM48kMB5".to_string(),
                 "https://www.mechardo3d.xyz/".to_string(),
             );
 
             loop {
                 if !ds.is_connected() {
                     ds.connect_loop();
-                    let t = ds.get_token();
-                    {
-                        *(conf.lock().unwrap()) = t;
-                    }
                 } else {
                     match ds.get_voice_settings() {
                         Some((m, d)) => {
@@ -164,13 +157,5 @@ impl DiscordWorker {
         }
 
         Ok(())
-    }
-
-    pub fn get_config(&mut self) -> Option<String> {
-        let c;
-        {
-            c = self.config.lock().unwrap().clone();
-        }
-        c
     }
 }

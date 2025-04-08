@@ -96,6 +96,7 @@ impl DiscordClient {
                         self.status = DiscordStatus::NotConnected;
                     }
                     Err(DiscordError::AuthenticationFailed) => {
+                        println!("ERROR TOKEN");
                         self.token = None;
                     }
                     Err(e) => {
@@ -104,11 +105,14 @@ impl DiscordClient {
                 },
                 None => match self.authorize() {
                     Some(code) => {
-                        self.token = Some(self.ipc_client.get_access_token(
+                        println!("code {code}");
+                        let to = self.ipc_client.get_access_token(
                             &code,
                             &self.client_secret,
                             &self.redirect_uri,
-                        ));
+                        );
+                        println!("TOKEN {to}");
+                        self.token = Some(to);
                         self.authenticate();
                     }
                     None => {}
@@ -119,6 +123,7 @@ impl DiscordClient {
     }
 
     pub fn connect_loop(&mut self) {
+        println!("{:?}", self.status);
         match self.status {
             DiscordStatus::NotConnected => {
                 self.connect();

@@ -10,10 +10,10 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
-const ENV_FILEPATH: &str = "secrets/discord.env";
+const ENV_FILEPATH: &str = "../secrets/discord.env";
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Config {
+pub struct DSConfig {
     pub discord_client_id: Option<String>,
     pub discord_secret_key: Option<String>,
     pub discord_access_token: Option<String>,
@@ -21,7 +21,7 @@ pub struct Config {
     pub last_port_connected: Option<String>,
 }
 
-impl Config {
+impl DSConfig {
     pub fn new() -> Self {
         dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         Self {
