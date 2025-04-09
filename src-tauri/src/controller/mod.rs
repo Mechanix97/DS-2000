@@ -1,4 +1,4 @@
-use crate::backend::discord::discord_worker::DiscordWorker;
+use crate::backend::discord::discord_worker::{DiscordWorker, DiscordUpdate};
 use crate::backend::serial::serial_worker::SerialWorker;
 use crate::config::*;
 
@@ -14,7 +14,7 @@ pub struct Controller {
 impl Controller{
     pub fn new() -> Self {
         let mut discord_worker = DiscordWorker::new();
-        let mut serial_worker = SerialWorker::new();
+        let serial_worker = SerialWorker::new();
         let mut config = DSConfig::new();
 
         config.load();
@@ -28,10 +28,6 @@ impl Controller{
         }
     }
 
-    pub fn save(&mut self) {
-        self.config.save();
-    }
-
     pub fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool){
         self.discord_worker.set_voice_settings(mute, deaf).unwrap();
     }
@@ -42,9 +38,24 @@ impl Controller{
 
         }
         if self.discord_worker.has_update() {
-            self.discord_worker.get_update(); 
+            if let Some(update) = self.discord_worker.get_update(){
+                match update {
+                    DiscordUpdate::NewAccessToken(token) => {
+                        self.config.discord_access_token = Some(token);
+                        self.config.save();
+                    }
+                    DiscordUpdate::NewRefreshToken(token) => {
+                        self.config.discord_refresh_token = Some(token);
+                        self.config.save();
+                    }
+                    DiscordUpdate::NewDiscordVoiceSetting(mute, deaf) => {
+                        //todo
+                        // sw.set_voice_settings(mute, deaf);
+                        println!("mute: {}   deaf:{}", mute, deaf);
+                    }
+                }
+            } 
         }
-
     }
 }
 
