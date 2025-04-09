@@ -13,7 +13,6 @@ pub enum SerialWorkerMessage {
     Stop,
 }
 
-
 #[derive(Clone, Copy)]
 pub enum SerialWorkerStatus {
     PortConnected,

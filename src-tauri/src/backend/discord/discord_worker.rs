@@ -3,9 +3,9 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::config::DSConfig;
 use crate::backend::discord::client::*;
 use crate::backend::discord::error::*;
+use crate::config::DSConfig;
 
 const REDIRECT_URI: &str = "https://www.mechardo3d.xyz/";
 
@@ -16,18 +16,18 @@ enum DiscordWorkerMessage {
     Disconnect,
 }
 
-pub enum DiscordUpdate{
+pub enum DiscordUpdate {
     NewAccessToken(String),
     NewRefreshToken(String),
-    NewDiscordVoiceSetting(bool, bool)
+    NewDiscordVoiceSetting(bool, bool),
 }
 
-struct DiscordState{
+struct DiscordState {
     muted: bool,
     deafen: bool,
     updates: Vec<DiscordUpdate>,
     acces_token: Option<String>,
-    refresh_token: Option<String>
+    refresh_token: Option<String>,
 }
 
 impl DiscordState {
@@ -35,30 +35,31 @@ impl DiscordState {
         DiscordState {
             muted: false,
             deafen: false,
-            updates: vec!(),
+            updates: vec![],
             acces_token: None,
-            refresh_token: None
+            refresh_token: None,
         }
     }
 
-    pub fn write_state(&mut self,  muted: bool, deafen: bool){
+    pub fn write_state(&mut self, muted: bool, deafen: bool) {
         self.muted = muted;
         self.deafen = deafen;
     }
 
-    pub fn update_state(&mut self, muted: bool, deafen: bool){
+    pub fn update_state(&mut self, muted: bool, deafen: bool) {
         if self.muted != muted || self.deafen != deafen {
-            self.updates.push(DiscordUpdate::NewDiscordVoiceSetting(muted, deafen));
+            self.updates
+                .push(DiscordUpdate::NewDiscordVoiceSetting(muted, deafen));
         }
         self.muted = muted;
         self.deafen = deafen;
     }
 
-    pub fn get_state(&self) -> (bool, bool){
+    pub fn get_state(&self) -> (bool, bool) {
         (self.muted, self.deafen)
     }
 
-    pub fn has_update(&self) -> bool{
+    pub fn has_update(&self) -> bool {
         self.updates.len() > 0
     }
 
@@ -66,11 +67,13 @@ impl DiscordState {
         self.updates.pop()
     }
 
-    pub fn save_tokens(&mut self, access_token: String, refresh_token: String){
+    pub fn save_tokens(&mut self, access_token: String, refresh_token: String) {
         self.acces_token = Some(access_token.clone());
         self.refresh_token = Some(refresh_token.clone());
-        self.updates.push(DiscordUpdate::NewAccessToken(access_token));
-        self.updates.push(DiscordUpdate::NewRefreshToken(refresh_token));
+        self.updates
+            .push(DiscordUpdate::NewAccessToken(access_token));
+        self.updates
+            .push(DiscordUpdate::NewRefreshToken(refresh_token));
     }
 }
 
@@ -78,7 +81,7 @@ pub struct DiscordWorker {
     thread: Option<thread::JoinHandle<()>>,
     tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
     _rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
-    state: Arc<RwLock<DiscordState>>
+    state: Arc<RwLock<DiscordState>>,
 }
 
 impl DiscordWorker {
@@ -87,7 +90,7 @@ impl DiscordWorker {
             thread: None,
             tx: None,
             _rx: None,
-            state: Arc::new(RwLock::new(DiscordState::new()))
+            state: Arc::new(RwLock::new(DiscordState::new())),
         }
     }
 
@@ -110,11 +113,11 @@ impl DiscordWorker {
             loop {
                 if !ds.is_connected() {
                     ds.connect_loop();
-                    if ds.is_connected(){
-                        state.write().unwrap().save_tokens(
-                            ds.get_access_token(),
-                            ds.get_refresh_token()
-                        );
+                    if ds.is_connected() {
+                        state
+                            .write()
+                            .unwrap()
+                            .save_tokens(ds.get_access_token(), ds.get_refresh_token());
                     }
                 }
 
@@ -194,10 +197,9 @@ impl DiscordWorker {
 
     pub fn set_voice_settings(&mut self, m: bool, d: bool) -> Result<(), DiscordError> {
         match &self.tx {
-            Some(tx) => {
-                tx.send(DiscordWorkerMessage::SetVoiceSetting(m, d))
-                .map_err(|_| DiscordError::InternalChannelClosed)?
-            }
+            Some(tx) => tx
+                .send(DiscordWorkerMessage::SetVoiceSetting(m, d))
+                .map_err(|_| DiscordError::InternalChannelClosed)?,
             None => {
                 return Err(DiscordError::InternalChannelClosed);
             }
@@ -218,7 +220,7 @@ impl DiscordWorker {
         Ok(())
     }
 
-    pub fn has_update(&self) -> bool{
+    pub fn has_update(&self) -> bool {
         self.state.read().unwrap().has_update()
     }
 

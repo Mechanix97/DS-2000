@@ -1,7 +1,7 @@
 use serialport::SerialPort;
+use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
-use std::io::BufRead;
 
 use crate::backend::serial::error::*;
 

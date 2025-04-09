@@ -1,4 +1,4 @@
-use crate::backend::discord::discord_worker::{DiscordWorker, DiscordUpdate};
+use crate::backend::discord::discord_worker::{DiscordUpdate, DiscordWorker};
 use crate::backend::serial::serial_worker::SerialWorker;
 use crate::config::*;
 
@@ -8,37 +8,35 @@ use tauri::State;
 pub struct Controller {
     discord_worker: DiscordWorker,
     serial_worker: SerialWorker,
-    config: DSConfig
+    config: DSConfig,
 }
 
-impl Controller{
+impl Controller {
     pub fn new() -> Self {
         let mut discord_worker = DiscordWorker::new();
         let serial_worker = SerialWorker::new();
         let mut config = DSConfig::new();
 
         config.load();
-        discord_worker.start( config.clone()).unwrap();
+        discord_worker.start(config.clone()).unwrap();
         // serial_worker.start(config.last_port_connected.clone()).unwrap();
-        
+
         Controller {
             discord_worker: discord_worker,
             serial_worker: serial_worker,
-            config: config
+            config: config,
         }
     }
 
-    pub fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool){
+    pub fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool) {
         self.discord_worker.set_voice_settings(mute, deaf).unwrap();
     }
 
-    pub fn controller_loop(&mut self){
+    pub fn controller_loop(&mut self) {
         //TODO DW and SW logic
-        if self.serial_worker.has_update() {
-
-        }
+        if self.serial_worker.has_update() {}
         if self.discord_worker.has_update() {
-            if let Some(update) = self.discord_worker.get_update(){
+            if let Some(update) = self.discord_worker.get_update() {
                 match update {
                     DiscordUpdate::NewAccessToken(token) => {
                         self.config.discord_access_token = Some(token);
@@ -54,12 +52,16 @@ impl Controller{
                         println!("mute: {}   deaf:{}", mute, deaf);
                     }
                 }
-            } 
+            }
         }
     }
 }
 
 #[tauri::command]
-pub fn ds_set_voice_settings_command(mute: bool, deaf: bool, controller: State<'_, Arc<Mutex<Controller>>>) {
+pub fn ds_set_voice_settings_command(
+    mute: bool,
+    deaf: bool,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) {
     controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
 }

@@ -32,7 +32,7 @@ impl DiscordClient {
             status: DiscordStatus::NotConnected,
             client_id: client_id,
             access_token: access_token,
-            refresh_token:refresh_token,
+            refresh_token: refresh_token,
             client_secret: client_secret,
             redirect_uri: redirect_uri,
         }
@@ -182,14 +182,14 @@ impl DiscordClient {
     pub fn get_access_token(&mut self) -> String {
         match &self.access_token {
             Some(at) => at.clone(),
-            None => "".to_string()
+            None => "".to_string(),
         }
     }
 
     pub fn get_refresh_token(&mut self) -> String {
         match &self.refresh_token {
             Some(at) => at.clone(),
-            None => "".to_string()
+            None => "".to_string(),
         }
     }
 }

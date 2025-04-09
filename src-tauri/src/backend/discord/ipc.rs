@@ -1,10 +1,10 @@
+#[cfg(windows)]
+use named_pipe::PipeClient;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::{env::var, os::unix::net::UnixStream};
-#[cfg(windows)]
-use named_pipe::PipeClient;
 
 use crate::backend::discord::error::*;
 use crate::backend::discord::pipemessage::*;
@@ -88,14 +88,17 @@ impl IPCClient {
 
         match &mut self.client_pipe {
             Some(cp) => {
-                cp.read_exact(&mut buf).map_err(|_| DiscordError::PipeErrorReading)?;
+                cp.read_exact(&mut buf)
+                    .map_err(|_| DiscordError::PipeErrorReading)?;
                 received_opcode = u32::from_le_bytes(buf);
 
-                cp.read_exact(&mut buf).map_err(|_| DiscordError::PipeErrorReading)?;
+                cp.read_exact(&mut buf)
+                    .map_err(|_| DiscordError::PipeErrorReading)?;
                 received_length = u32::from_le_bytes(buf);
 
                 let mut response_data = vec![0u8; received_length as usize];
-                cp.read_exact(&mut response_data).map_err(|_| DiscordError::PipeErrorReading)?;
+                cp.read_exact(&mut response_data)
+                    .map_err(|_| DiscordError::PipeErrorReading)?;
                 let response_data_str = String::from_utf8_lossy(&response_data);
 
                 return Ok(PipeMessage::new(
@@ -117,15 +120,20 @@ impl IPCClient {
         //send message
         match &mut self.client_pipe {
             Some(cp) => {
-                cp.write_all(&hm.to_buff()).map_err(|_| DiscordError::PipeErrorReading)?;
+                cp.write_all(&hm.to_buff())
+                    .map_err(|_| DiscordError::PipeErrorReading)?;
             }
             None => return Err(DiscordError::PipeNotConnected),
         }
 
         //receive reply
         match (&self.read_message()?).opcode {
-            Opcode::Frame => { return Ok(()); }
-            _ => { return Err(DiscordError::HandshakeFailed); }
+            Opcode::Frame => {
+                return Ok(());
+            }
+            _ => {
+                return Err(DiscordError::HandshakeFailed);
+            }
         }
     }
 
@@ -141,8 +149,9 @@ impl IPCClient {
 
         //send message
         match &mut self.client_pipe {
-            Some(cp) => { 
-                cp.write_all(&am.to_buff()).map_err(|_| DiscordError::PipeWriteError)?; 
+            Some(cp) => {
+                cp.write_all(&am.to_buff())
+                    .map_err(|_| DiscordError::PipeWriteError)?;
             }
             None => return Err(DiscordError::PipeNotConnected),
         }
@@ -165,7 +174,8 @@ impl IPCClient {
         //send message
         match &mut self.client_pipe {
             Some(cp) => {
-                cp.write_all(&am.to_buff()).map_err(|_| DiscordError::PipeWriteError)?;
+                cp.write_all(&am.to_buff())
+                    .map_err(|_| DiscordError::PipeWriteError)?;
             }
             None => return Err(DiscordError::PipeNotConnected),
         }
@@ -211,14 +221,16 @@ impl IPCClient {
         let body = res.text().unwrap();
         let response: Value = serde_json::from_str(&body).unwrap();
 
-        (response["access_token"]
-            .to_string()
-            .trim_matches('"')
-            .to_string(),
-        response["refresh_token"]
-            .to_string()
-            .trim_matches('"')
-            .to_string())
+        (
+            response["access_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+            response["refresh_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+        )
     }
 
     pub fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError> {
@@ -228,7 +240,8 @@ impl IPCClient {
         //send message
         match &mut self.client_pipe {
             Some(cp) => {
-                cp.write_all(&gvsm.to_buff()).map_err(|_| DiscordError::PipeWriteError)?;
+                cp.write_all(&gvsm.to_buff())
+                    .map_err(|_| DiscordError::PipeWriteError)?;
             }
             None => return Err(DiscordError::PipeNotConnected),
         }
@@ -236,16 +249,16 @@ impl IPCClient {
         //receive reply
         let m = self.read_message()?;
         let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.unwrap())
-            .map_err(|_|DiscordError::SerdeConvertionError)?;
-        
+            .map_err(|_| DiscordError::SerdeConvertionError)?;
+
         if !(parsed_json["evt"].is_null()) {
             return Err(DiscordError::AuthenticationFailed);
         }
-        
+
         if parsed_json["data"]["mute"].is_null() || parsed_json["data"]["deaf"].is_null() {
             return Err(DiscordError::NoDataFound);
         }
-        
+
         let muted = parsed_json["data"]["mute"].as_bool().unwrap();
         let deafen = parsed_json["data"]["deaf"].as_bool().unwrap();
         Ok((muted, deafen))
@@ -257,9 +270,9 @@ impl IPCClient {
 
         //send message
         match &mut self.client_pipe {
-            Some(cp) => {
-                cp.write_all(&svsm.to_buff()).map_err(|_| DiscordError::PipeWriteError)?
-            }
+            Some(cp) => cp
+                .write_all(&svsm.to_buff())
+                .map_err(|_| DiscordError::PipeWriteError)?,
             None => return Err(DiscordError::PipeNotConnected),
         }
 
@@ -267,7 +280,7 @@ impl IPCClient {
         let m = self.read_message()?;
         let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.unwrap())
             .map_err(|_| DiscordError::SerdeConvertionError)?;
-        
+
         if !(parsed_json["evt"].is_null()) {
             return Err(DiscordError::AuthenticationFailed);
         }
@@ -280,9 +293,9 @@ impl IPCClient {
 
         //send message
         match &mut self.client_pipe {
-            Some(cp) => {
-                cp.write_all(&svc.to_buff()).map_err(|_| DiscordError::PipeWriteError)?
-            }
+            Some(cp) => cp
+                .write_all(&svc.to_buff())
+                .map_err(|_| DiscordError::PipeWriteError)?,
             None => return Err(DiscordError::PipeNotConnected),
         }
 
@@ -290,7 +303,7 @@ impl IPCClient {
         let m = self.read_message()?;
         let parsed_json: serde_json::Value = serde_json::from_str(&m.payload.unwrap())
             .map_err(|_| DiscordError::SerdeConvertionError)?;
-        
+
         if !(parsed_json["evt"].is_null()) {
             return Err(DiscordError::AuthenticationFailed);
         }

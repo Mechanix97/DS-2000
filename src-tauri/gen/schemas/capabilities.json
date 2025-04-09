@@ -1,1 +1,1 @@
-{}
+{"desktop-capability":{"identifier":"desktop-capability","description":"","local":true,"windows":["*"],"permissions":["shell:default","shell:allow-execute","shell:allow-open"],"platforms":["linux","macOS","windows"]}}

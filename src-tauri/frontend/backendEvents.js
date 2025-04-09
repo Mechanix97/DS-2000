@@ -1,14 +1,24 @@
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-shell';
 
 var mute = false;
 var deaf = false;
 
-document.getElementById('mic-icon')?.addEventListener('click', () => {
+const micIcon = document.getElementById('mic-icon');
+const headsetIcon = document.getElementById('headset-icon');
+const DS2000Button = document.getElementById('DS2000-button');
+
+micIcon.addEventListener('click', () => {
   mute = !mute;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf }).then(console.log())
+  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
 })
 
-document.getElementById('headset-icon')?.addEventListener('click', () => {
+headsetIcon.addEventListener('click', () => {
   deaf = !deaf;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf }).then(console.log())
+  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
 })
+
+
+DS2000Button.addEventListener('click', async () => {
+  await open('https://mechardo3d.xyz');
+});
