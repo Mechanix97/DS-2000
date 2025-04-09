@@ -1,25 +1,61 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
+use crate::config::DSConfig;
 use crate::backend::discord::client::*;
 use crate::backend::discord::error::*;
 
-pub enum DiscordWorkerMessage {
+enum DiscordWorkerMessage {
     Stop,
     GetVoiceSettigs,
     SetVoiceSetting(bool, bool),
     Disconnect,
 }
 
+struct DiscordState{
+    muted: bool,
+    deafen: bool,
+    has_update: bool,
+}
+
+impl DiscordState {
+    pub fn new() -> Self {
+        DiscordState {
+            muted: false,
+            deafen: false,
+            has_update: false,
+        }
+    }
+
+    pub fn update_state(&mut self, muted: bool, deafen: bool){
+        if self.muted != muted || self.deafen != deafen {
+            self.has_update = true;
+        }
+        self.muted = muted;
+        self.deafen = deafen;
+    }
+
+    pub fn get_state(&self) -> (bool, bool){
+        (self.muted, self.deafen)
+    }
+
+    pub fn has_update(&self) -> bool{
+        self.has_update
+    }
+
+    pub fn get_update(&mut self) {
+        self.has_update = false;
+    }
+}
+
 pub struct DiscordWorker {
     thread: Option<thread::JoinHandle<()>>,
     tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
     _rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
-    muted: Arc<AtomicBool>,
-    deafen: Arc<AtomicBool>
+    state: Arc<RwLock<DiscordState>>
 }
 
 impl DiscordWorker {
@@ -28,38 +64,35 @@ impl DiscordWorker {
             thread: None,
             tx: None,
             _rx: None,
-            muted: Arc::new(AtomicBool::new(false)),
-            deafen: Arc::new(AtomicBool::new(false))
+            state: Arc::new(RwLock::new(DiscordState::new()))
         }
     }
 
-    pub fn start(&mut self, ds_token: Option<String>) -> Result<(), DiscordError> {
+    pub fn start(&mut self, mut config: DSConfig) -> Result<(), DiscordError> {
         let (tx, rx_thread) = mpsc::channel();
 
         self.tx = Some(tx);
 
-        let muted = self.muted.clone();
-        let deafen = self.deafen.clone();
+        let state = self.state.clone();
 
         let t = thread::spawn(move || {
             let mut ds = DiscordClient::new(
-                //FIX this
-                "713524519830028368".to_string(),
-                ds_token,
-                "peK01dg65Qa97Bu3tL3VgPF8DM48kMB5".to_string(),
+                config.discord_client_id.clone().unwrap(),
+                config.discord_access_token.clone(),
+                config.discord_refresh_token.clone(),
+                config.discord_secret_key.clone().unwrap(),
                 "https://www.mechardo3d.xyz/".to_string(),
             );
 
             loop {
                 if !ds.is_connected() {
                     ds.connect_loop();
-                } else {
-                    match ds.get_voice_settings() {
-                        Some((m, d)) => {
-                            muted.store(m, Ordering::SeqCst);
-                            deafen.store(d, Ordering::SeqCst);
-                        }
-                        None => {}
+                    if ds.is_connected(){
+                        let at = ds.get_access_token();
+                        let rt = ds.get_refresh_token();
+                        config.discord_access_token = Some(at);
+                        config.discord_refresh_token = Some(rt);
+                        config.save();
                     }
                 }
 
@@ -70,13 +103,13 @@ impl DiscordWorker {
                         }
                         DiscordWorkerMessage::GetVoiceSettigs => match ds.get_voice_settings() {
                             Some((m, d)) => {
-                                muted.store(m, Ordering::SeqCst);
-                                deafen.store(d, Ordering::SeqCst);
+                                state.write().unwrap().update_state(m, d);
                             }
                             None => {}
                         },
                         DiscordWorkerMessage::SetVoiceSetting(m, d) => {
-                            ds.set_voice_settings(m, d);
+                            state.write().unwrap().update_state(m, d);
+                            ds.set_voice_settings(m || d, d);
                         }
                         DiscordWorkerMessage::Disconnect => {
                             ds.disconnect();
@@ -127,9 +160,7 @@ impl DiscordWorker {
             }
         }
 
-        let m = self.muted.load(Ordering::SeqCst);
-        let d = self.deafen.load(Ordering::SeqCst); // *self.deafen.get_mut();
-
+        let (m, d) = self.state.read().unwrap().get_state();
         Ok((m, d))
     }
 
@@ -157,5 +188,13 @@ impl DiscordWorker {
         }
 
         Ok(())
+    }
+
+    pub fn has_update(&self) -> bool{
+        self.state.read().unwrap().has_update()
+    }
+
+    pub fn get_update(&self){
+        self.state.write().unwrap().get_update()
     }
 }

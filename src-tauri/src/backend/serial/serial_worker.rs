@@ -209,4 +209,8 @@ impl SerialWorker {
         self.disconnect.store(false, Ordering::SeqCst);
         m
     }
+
+    pub fn has_update(&self) -> bool {
+        false
+    }
 }

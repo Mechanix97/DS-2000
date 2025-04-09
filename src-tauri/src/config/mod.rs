@@ -12,7 +12,7 @@ use std::path::Path;
 
 const ENV_FILEPATH: &str = "../secrets/discord.env";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DSConfig {
     pub discord_client_id: Option<String>,
     pub discord_secret_key: Option<String>,

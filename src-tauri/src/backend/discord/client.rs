@@ -13,7 +13,8 @@ pub struct DiscordClient {
     ipc_client: IPCClient,
     status: DiscordStatus,
     client_id: String,
-    token: Option<String>,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
     client_secret: String,
     redirect_uri: String,
 }
@@ -21,7 +22,8 @@ pub struct DiscordClient {
 impl DiscordClient {
     pub fn new(
         client_id: String,
-        token: Option<String>,
+        access_token: Option<String>,
+        refresh_token: Option<String>,
         client_secret: String,
         redirect_uri: String,
     ) -> Self {
@@ -29,7 +31,8 @@ impl DiscordClient {
             ipc_client: IPCClient::new(),
             status: DiscordStatus::NotConnected,
             client_id: client_id,
-            token: token,
+            access_token: access_token,
+            refresh_token:refresh_token,
             client_secret: client_secret,
             redirect_uri: redirect_uri,
         }
@@ -87,7 +90,7 @@ impl DiscordClient {
 
     pub fn authenticate(&mut self) {
         match self.status {
-            DiscordStatus::HandshakeOk => match &self.token {
+            DiscordStatus::HandshakeOk => match &self.access_token {
                 Some(token) => match self.ipc_client.authenticate(&token) {
                     Ok(_) => {
                         self.status = DiscordStatus::Authenticated;
@@ -96,8 +99,8 @@ impl DiscordClient {
                         self.status = DiscordStatus::NotConnected;
                     }
                     Err(DiscordError::AuthenticationFailed) => {
-                        println!("ERROR TOKEN");
-                        self.token = None;
+                        self.access_token = None;
+                        self.refresh_token = None;
                     }
                     Err(e) => {
                         panic!("No deberia estar aca: {:?}", e);
@@ -105,14 +108,13 @@ impl DiscordClient {
                 },
                 None => match self.authorize() {
                     Some(code) => {
-                        println!("code {code}");
-                        let to = self.ipc_client.get_access_token(
+                        let (access_token, refresh_token) = self.ipc_client.get_tokens(
                             &code,
                             &self.client_secret,
                             &self.redirect_uri,
                         );
-                        println!("TOKEN {to}");
-                        self.token = Some(to);
+                        self.access_token = Some(access_token);
+                        self.refresh_token = Some(refresh_token);
                         self.authenticate();
                     }
                     None => {}
@@ -123,7 +125,6 @@ impl DiscordClient {
     }
 
     pub fn connect_loop(&mut self) {
-        println!("{:?}", self.status);
         match self.status {
             DiscordStatus::NotConnected => {
                 self.connect();
@@ -178,7 +179,17 @@ impl DiscordClient {
         }
     }
 
-    pub fn get_token(&self) -> Option<String> {
-        self.token.clone()
+    pub fn get_access_token(&mut self) -> String {
+        match &self.access_token {
+            Some(at) => at.clone(),
+            None => "".to_string()
+        }
+    }
+
+    pub fn get_refresh_token(&mut self) -> String {
+        match &self.refresh_token {
+            Some(at) => at.clone(),
+            None => "".to_string()
+        }
     }
 }

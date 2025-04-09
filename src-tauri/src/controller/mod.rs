@@ -2,7 +2,7 @@ use crate::backend::discord::discord_worker::DiscordWorker;
 use crate::backend::serial::serial_worker::SerialWorker;
 use crate::config::*;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 pub struct Controller {
@@ -18,7 +18,7 @@ impl Controller{
         let mut config = DSConfig::new();
 
         config.load();
-        discord_worker.start(config.discord_access_token.clone()).unwrap();
+        discord_worker.start( config.clone()).unwrap();
         // serial_worker.start(config.last_port_connected.clone()).unwrap();
         
         Controller {
@@ -33,20 +33,22 @@ impl Controller{
     }
 
     pub fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool){
-        self.discord_worker.set_voice_settings(mute, deaf);
+        self.discord_worker.set_voice_settings(mute, deaf).unwrap();
+    }
+
+    pub fn controller_loop(&mut self){
+        //TODO DW and SW logic
+        if self.serial_worker.has_update() {
+
+        }
+        if self.discord_worker.has_update() {
+            self.discord_worker.get_update(); 
+        }
+
     }
 }
 
-
 #[tauri::command]
-pub fn hacer_algo(nombre: String, controller: State<'_, Mutex<Controller>>) {
-    println!("Hola, {}!", nombre);
-
-    controller.lock().unwrap().save();
-    // Ejemplo: podrías usar ctrl.discord_worker o lo que necesites
-}
-
-#[tauri::command]
-pub fn ds_set_voice_settings_command(mute: bool, deaf: bool, controller: State<'_, Mutex<Controller>>) {
+pub fn ds_set_voice_settings_command(mute: bool, deaf: bool, controller: State<'_, Arc<Mutex<Controller>>>) {
     controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
 }

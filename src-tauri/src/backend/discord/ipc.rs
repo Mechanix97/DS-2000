@@ -181,12 +181,12 @@ impl IPCClient {
         Ok(())
     }
 
-    pub fn get_access_token(
+    pub fn get_tokens(
         &mut self,
         code: &str,
         client_secret: &str,
         redirect_uri: &str,
-    ) -> String {
+    ) -> (String, String) {
         let api_endpoint = "https://discord.com/api/v10/oauth2/token";
         let cs = client_secret.to_string();
         let ci = self.client_id.clone().unwrap();
@@ -211,10 +211,14 @@ impl IPCClient {
         let body = res.text().unwrap();
         let response: Value = serde_json::from_str(&body).unwrap();
 
-        response["access_token"]
+        (response["access_token"]
             .to_string()
             .trim_matches('"')
+            .to_string(),
+        response["refresh_token"]
             .to_string()
+            .trim_matches('"')
+            .to_string())
     }
 
     pub fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError> {

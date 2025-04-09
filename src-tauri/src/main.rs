@@ -3,15 +3,23 @@ mod config;
 mod controller;
 
 use controller::*;
-use std::sync::Mutex;
+use std::{sync::{Arc, Mutex}, thread};
 
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 fn main() {
+    let controller = Arc::new(Mutex::new(Controller::new()));
+
+    let controller_clone = controller.clone();
+    let _jh = thread::spawn(move || {
+        loop{
+            {controller_clone.lock().unwrap().controller_loop();}
+        }
+    });
 
     tauri::Builder::default()
-        .manage(Mutex::new(Controller::new()))
+        .manage(controller)
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -22,7 +30,6 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![controller::hacer_algo])
         .invoke_handler(tauri::generate_handler![controller::ds_set_voice_settings_command])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
