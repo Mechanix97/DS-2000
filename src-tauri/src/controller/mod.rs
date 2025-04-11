@@ -14,12 +14,12 @@ pub struct Controller {
 impl Controller {
     pub fn new() -> Self {
         let mut discord_worker = DiscordWorker::new();
-        let serial_worker = SerialWorker::new();
+        let mut serial_worker = SerialWorker::new();
         let mut config = DSConfig::new();
 
         config.load();
         discord_worker.start(config.clone()).unwrap();
-        // serial_worker.start(config.last_port_connected.clone()).unwrap();
+        serial_worker.start(config.last_port_connected.clone()).unwrap();
 
         Controller {
             discord_worker: discord_worker,

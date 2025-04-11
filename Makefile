@@ -1,3 +1,5 @@
+include secrets\discord.env
+export
 
 run:
 	@cargo tauri dev

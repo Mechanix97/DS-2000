@@ -1,7 +1,6 @@
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use directories::BaseDirs;
-use dotenvy;
 use hex::decode;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -9,8 +8,6 @@ use std::env::var;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
-
-const ENV_FILEPATH: &str = "../secrets/discord.env";
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DSConfig {
@@ -23,7 +20,7 @@ pub struct DSConfig {
 
 impl DSConfig {
     pub fn new() -> Self {
-        dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
+       // dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         Self {
             discord_client_id: None,
             discord_secret_key: None,
