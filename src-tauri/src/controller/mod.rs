@@ -3,7 +3,7 @@ use crate::backend::serial::serial_worker::SerialWorker;
 use crate::config::*;
 
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 pub struct Controller {
     discord_worker: DiscordWorker,
@@ -32,7 +32,8 @@ impl Controller {
         self.discord_worker.set_voice_settings(mute, deaf).unwrap();
     }
 
-    pub fn controller_loop(&mut self) {
+    pub fn controller_loop(&mut self, app: &AppHandle) {
+        app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
         if self.serial_worker.has_update() {}
         if self.discord_worker.has_update() {
@@ -64,4 +65,17 @@ pub fn ds_set_voice_settings_command(
     controller: State<'_, Arc<Mutex<Controller>>>,
 ) {
     controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
+}
+
+#[tauri::command]
+pub fn controller_start(
+    app: AppHandle,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) {
+    let conttoller_clone = controller.inner().clone();
+    std::thread::spawn(move || {
+        loop{
+            conttoller_clone.lock().unwrap().controller_loop(&app);
+        }
+    });
 }

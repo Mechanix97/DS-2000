@@ -1,4 +1,4 @@
-include secrets\discord.env
+include discord.env
 export
 
 run:

@@ -91,6 +91,15 @@ impl DSConfig {
                 std::fs::create_dir_all(&appdata_path).unwrap();
             }
 
+            if self.discord_client_id.is_none() {
+                self.discord_client_id =
+                    Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
+            }
+            if self.discord_secret_key.is_none() {
+                self.discord_secret_key =
+                    Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
+            }
+
             let json = serde_json::to_string_pretty(self).unwrap();
 
             let key_hex = var("ENCRYPTION_KEY").expect("Missing ENCRYPTION_KEY in environment");

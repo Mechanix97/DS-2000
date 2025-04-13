@@ -93,9 +93,11 @@ impl DiscordClient {
             DiscordStatus::HandshakeOk => match &self.access_token {
                 Some(token) => match self.ipc_client.authenticate(&token) {
                     Ok(_) => {
+                        println!("Autenticado");
                         self.status = DiscordStatus::Authenticated;
                     }
                     Err(DiscordError::PipeNotConnected) => {
+                        println!("Pipe not connected");
                         self.status = DiscordStatus::NotConnected;
                     }
                     Err(DiscordError::AuthenticationFailed) => {
@@ -108,13 +110,15 @@ impl DiscordClient {
                 },
                 None => match self.authorize() {
                     Some(code) => {
+                        println!("Autorizado {}", self.client_secret);
                         let (access_token, refresh_token) = self.ipc_client.get_tokens(
                             &code,
                             &self.client_secret,
                             &self.redirect_uri,
                         );
-                        self.access_token = Some(access_token);
+                        self.access_token = Some(access_token.clone());
                         self.refresh_token = Some(refresh_token);
+                        println!("autentico de nuevo {}", access_token);
                         self.authenticate();
                     }
                     None => {}
