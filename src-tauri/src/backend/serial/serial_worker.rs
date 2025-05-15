@@ -59,7 +59,7 @@ impl SerialWorker {
             let mut port = Port::new();
             match port_name {
                 Some(p) => {
-                    match port.connect(p.as_str(), 9600, Duration::from_millis(100)) {
+                    match port.connect(p.as_str(), 115200, Duration::from_millis(100)) {
                         Ok(_) => {
                             *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
                         }

@@ -2,6 +2,7 @@ use serialport::SerialPort;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
+use std::time::Instant;
 
 use crate::backend::serial::error::*;
 
@@ -101,33 +102,56 @@ impl Port {
     }
 
     //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
-    pub fn authenticate(&mut self) -> Result<(), SerialPortError> {
-        match &mut self.port {
-            Some(p) => {
-                p.as_mut()
-                    .write(b"PING\n")
-                    .map_err(|_| SerialPortError::PortNotConnected)?;
 
-                let mut buf = Vec::new();
-                p.read_to_end(&mut buf)
-                    .map_err(|_| SerialPortError::PortNotConnected)?;
-                let response = match String::from_utf8(buf) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        println!("Error de codificación UTF-8: {}", e);
-                        return Err(SerialPortError::PortNotConnected);
+pub fn authenticate(&mut self) -> Result<(), SerialPortError> {
+    match &mut self.port {
+        Some(p) => {
+            println!("hago ping");
+            // Enviar PING\n
+            p.as_mut()
+                .write(b"PING\n")
+                .map_err(|_| SerialPortError::PortNotConnected)?;
+            p.flush().map_err(|_| SerialPortError::PortNotConnected)?; // Asegurar que se envíe
+
+            // Buffer para leer
+            let mut buf = [0u8; 64];
+            let mut total_bytes = 0;
+            let expected_bytes = 5; // "PONG\n" o "pong\n" tiene 5 bytes
+            let timeout = Duration::from_millis(1000); // Timeout total de 1 segundo
+            let start = Instant::now();
+
+            // Leer hasta obtener los bytes esperados o timeout
+            while total_bytes < expected_bytes && start.elapsed() < timeout {
+                match p.read(&mut buf[total_bytes..]) {
+                    Ok(n) => {
+                        total_bytes += n;
+                        println!("Bytes parciales recibidos: {:?}", &buf[..total_bytes]);
                     }
-                };
-                if response != "PONG\r\n" {
-                    return Err(SerialPortError::PortNotConnected);
+                    Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                        // Continuar si hay timeout parcial
+                        continue;
+                    }
+                    Err(_) => return Err(SerialPortError::PortNotConnected),
                 }
-
-                Ok(())
             }
-            None => Err(SerialPortError::PortNotConnected),
-        }
-    }
 
+            // Convertir a string
+            let response = String::from_utf8_lossy(&buf[..total_bytes]).to_string();
+            println!("Respuesta completa: |{}|", response);
+            println!("Bytes totales recibidos: {:?}", &buf[..total_bytes]);
+
+            // Verificar respuesta (ajusta según el firmware: "PONG\n" o "pong\n")
+            if response != "PONG\r\n" { // Cambia a "pong\n" si modificaste el firmware
+                println!("Respuesta inesperada: |{}|", response);
+                return Err(SerialPortError::AuthenticationFailed);
+            }
+
+            println!("Autenticación exitosa");
+            Ok(())
+        }
+        None => Err(SerialPortError::PortNotConnected),
+    }
+}
     pub fn is_connected(&self) -> bool {
         match self.port {
             Some(_) => true,
