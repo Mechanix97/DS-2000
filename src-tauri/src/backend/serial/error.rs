@@ -6,5 +6,5 @@ pub enum SerialPortError {
     InternalChannelClosed,
     ErrorClosingThread,
     TimedOut,
-    AuthenticationFailed
+    AuthenticationFailed,
 }

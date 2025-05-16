@@ -1,10 +1,10 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-
-use std::sync::atomic::{AtomicBool, Ordering};
+use tracing::info;
 
 use crate::backend::serial::error::*;
 use crate::backend::serial::port::*;
@@ -18,6 +18,11 @@ pub enum SerialWorkerStatus {
     PortConnected,
     PortNotConnected,
     Stopped,
+}
+
+struct PortRecord {
+    port_name: String,
+    last_tried: u64,
 }
 
 pub struct SerialWorker {
@@ -95,7 +100,7 @@ impl SerialWorker {
                             Ok(line) => {
                                 match line.as_str() {
                                     s if s.starts_with("DSST") => {
-                                        println!("DSST");
+                                        info!("DSST");
                                     }
                                     s if s.starts_with("HWST-") => {
                                         let parts: Vec<&str> = s.split('-').collect();
@@ -130,7 +135,7 @@ impl SerialWorker {
                                         }
                                     }
                                     _ => {
-                                        println!("Comando desconocido");
+                                        info!("Comando desconocido");
                                     }
                                 }
                             }
@@ -175,7 +180,7 @@ impl SerialWorker {
                     self.thread = None;
                 }
                 Err(e) => {
-                    println!("Error cerrando thread: {:?}", e);
+                    info!("Error cerrando thread: {:?}", e);
                     return Err(SerialPortError::ErrorClosingThread);
                 }
             }
@@ -187,7 +192,7 @@ impl SerialWorker {
     fn parse_message(&self, line: &String) {
         match line.as_str() {
             s if s.starts_with("DSST") => {
-                println!("DSST");
+                info!("DSST");
             }
             s if s.starts_with("HWST-") => {}
             _ => {

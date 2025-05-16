@@ -447,12 +447,6 @@
           "markdownDescription": "Enables the set_app_theme command without any pre-configured scope."
         },
         {
-          "description": "Enables the set_dock_visibility command without any pre-configured scope.",
-          "type": "string",
-          "const": "core:app:allow-set-dock-visibility",
-          "markdownDescription": "Enables the set_dock_visibility command without any pre-configured scope."
-        },
-        {
           "description": "Enables the tauri_version command without any pre-configured scope.",
           "type": "string",
           "const": "core:app:allow-tauri-version",
@@ -511,12 +505,6 @@
           "type": "string",
           "const": "core:app:deny-set-app-theme",
           "markdownDescription": "Denies the set_app_theme command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the set_dock_visibility command without any pre-configured scope.",
-          "type": "string",
-          "const": "core:app:deny-set-dock-visibility",
-          "markdownDescription": "Denies the set_dock_visibility command without any pre-configured scope."
         },
         {
           "description": "Denies the tauri_version command without any pre-configured scope.",
@@ -2281,24 +2269,6 @@
           "type": "string",
           "const": "core:window:deny-unminimize",
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
-        },
-        {
-          "description": "Allows the log command\n#### This default permission set includes:\n\n- `allow-log`",
-          "type": "string",
-          "const": "log:default",
-          "markdownDescription": "Allows the log command\n#### This default permission set includes:\n\n- `allow-log`"
-        },
-        {
-          "description": "Enables the log command without any pre-configured scope.",
-          "type": "string",
-          "const": "log:allow-log",
-          "markdownDescription": "Enables the log command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the log command without any pre-configured scope.",
-          "type": "string",
-          "const": "log:deny-log",
-          "markdownDescription": "Denies the log command without any pre-configured scope."
         },
         {
           "description": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality with a reasonable\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n\n#### This default permission set includes:\n\n- `allow-open`",

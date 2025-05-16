@@ -4,25 +4,21 @@ mod controller;
 
 use controller::*;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, info};
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 fn main() {
     let controller = Arc::new(Mutex::new(Controller::new()));
 
+    tracing_subscriber::fmt().init();
+
+    info!("Aplicación iniciada");
+    debug!("Este es un log de debug");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(controller)
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             controller::controller_start,
             controller::ds_set_voice_settings_command

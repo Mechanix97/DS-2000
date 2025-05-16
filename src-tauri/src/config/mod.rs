@@ -20,7 +20,7 @@ pub struct DSConfig {
 
 impl DSConfig {
     pub fn new() -> Self {
-       // dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
+        // dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         Self {
             discord_client_id: None,
             discord_secret_key: None,
@@ -92,12 +92,10 @@ impl DSConfig {
             }
 
             if self.discord_client_id.is_none() {
-                self.discord_client_id =
-                    Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
+                self.discord_client_id = Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
             }
             if self.discord_secret_key.is_none() {
-                self.discord_secret_key =
-                    Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
+                self.discord_secret_key = Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
             }
 
             let json = serde_json::to_string_pretty(self).unwrap();

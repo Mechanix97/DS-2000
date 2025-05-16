@@ -1,9 +1,9 @@
 use crate::backend::discord::discord_worker::{DiscordUpdate, DiscordWorker};
 use crate::backend::serial::serial_worker::SerialWorker;
 use crate::config::*;
-
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
+use tracing::info;
 
 pub struct Controller {
     discord_worker: DiscordWorker,
@@ -19,7 +19,9 @@ impl Controller {
 
         config.load();
         discord_worker.start(config.clone()).unwrap();
-        serial_worker.start(config.last_port_connected.clone()).unwrap();
+        serial_worker
+            .start(config.last_port_connected.clone())
+            .unwrap();
 
         Controller {
             discord_worker: discord_worker,
@@ -33,7 +35,7 @@ impl Controller {
     }
 
     pub fn controller_loop(&mut self, app: &AppHandle) {
-        app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
+        // app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
         if self.serial_worker.has_update() {}
         if self.discord_worker.has_update() {
@@ -50,7 +52,7 @@ impl Controller {
                     DiscordUpdate::NewDiscordVoiceSetting(mute, deaf) => {
                         //todo
                         // sw.set_voice_settings(mute, deaf);
-                        println!("mute: {}   deaf:{}", mute, deaf);
+                        info!("mute: {}   deaf:{}", mute, deaf);
                     }
                 }
             }
@@ -68,14 +70,9 @@ pub fn ds_set_voice_settings_command(
 }
 
 #[tauri::command]
-pub fn controller_start(
-    app: AppHandle,
-    controller: State<'_, Arc<Mutex<Controller>>>,
-) {
+pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
     let conttoller_clone = controller.inner().clone();
-    std::thread::spawn(move || {
-        loop{
-            conttoller_clone.lock().unwrap().controller_loop(&app);
-        }
+    std::thread::spawn(move || loop {
+        conttoller_clone.lock().unwrap().controller_loop(&app);
     });
 }
