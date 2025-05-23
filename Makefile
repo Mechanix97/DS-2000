@@ -10,3 +10,9 @@ deps:
 	
 build_installer_windows:
 	@cargo tauri bundle
+
+clean:
+	@cd src-tauri && cargo clean
+
+lint:
+	@cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
