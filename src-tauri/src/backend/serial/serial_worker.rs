@@ -9,6 +9,8 @@ use tracing::info;
 use crate::backend::serial::error::*;
 use crate::backend::serial::port::*;
 
+use super::serial_message::SerialMessage;
+
 pub enum SerialWorkerMessage {
     Stop,
 }
@@ -85,7 +87,7 @@ impl SerialWorker {
 
                 match current_status {
                     SerialWorkerStatus::PortNotConnected => {
-                        match port.auto_connect(9600, Duration::from_millis(100)) {
+                        match port.auto_connect(9600, Duration::from_millis(10000)) {
                             Ok(_) => {
                                 *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
                             }
@@ -96,50 +98,15 @@ impl SerialWorker {
                     }
                     SerialWorkerStatus::PortConnected => {
                         //logica de msg con la placa
-                        match port.read_line() {
-                            Ok(line) => {
-                                match line.as_str() {
-                                    s if s.starts_with("DSST") => {
-                                        info!("DSST");
-                                    }
-                                    s if s.starts_with("HWST-") => {
-                                        let parts: Vec<&str> = s.split('-').collect();
-
-                                        // Obtener la última parte que contiene los números
-                                        if let Some(last_part) = parts.last() {
-                                            let digit1 = last_part
-                                                .chars()
-                                                .nth(0)
-                                                .unwrap()
-                                                .to_digit(10)
-                                                .unwrap();
-                                            let digit2 = last_part
-                                                .chars()
-                                                .nth(1)
-                                                .unwrap()
-                                                .to_digit(10)
-                                                .unwrap();
-                                            let digit3 = last_part
-                                                .chars()
-                                                .nth(2)
-                                                .unwrap()
-                                                .to_digit(10)
-                                                .unwrap();
-                                            let mute_b = digit1 == 1;
-                                            let deaf_b = digit2 == 1;
-                                            let disconnect_b = digit3 == 1;
-
-                                            muted.store(mute_b, Ordering::SeqCst);
-                                            deafen.store(deaf_b, Ordering::SeqCst);
-                                            disconnect.store(disconnect_b, Ordering::SeqCst);
-                                        }
-                                    }
-                                    _ => {
-                                        info!("Comando desconocido");
-                                    }
+                        if let Ok(msg) = port.read_message() {
+                            match msg {
+                                SerialMessage::Ping(_) => {
+                                    info!("msg PING recvd");
+                                }
+                                SerialMessage::Pong(_) => {
+                                    info!("msg PONG recvd");
                                 }
                             }
-                            Err(_e) => {}
                         }
                     }
                     SerialWorkerStatus::Stopped => {

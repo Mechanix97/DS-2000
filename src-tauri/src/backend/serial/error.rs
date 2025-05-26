@@ -7,4 +7,13 @@ pub enum SerialPortError {
     ErrorClosingThread,
     TimedOut,
     AuthenticationFailed,
+    ErrorReadingPort,
+    ErrorEncodingMsg(SerialMessageError),
+    ErrorDecodingMsg(SerialMessageError),
+}
+
+#[derive(Debug, Clone)]
+
+pub enum SerialMessageError {
+    MalformedData,
 }
