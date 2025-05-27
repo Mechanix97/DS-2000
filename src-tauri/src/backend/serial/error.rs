@@ -10,6 +10,7 @@ pub enum SerialPortError {
     ErrorReadingPort,
     ErrorEncodingMsg(SerialMessageError),
     ErrorDecodingMsg(SerialMessageError),
+    InternalError,
 }
 
 #[derive(Debug, Clone)]

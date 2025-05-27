@@ -188,42 +188,62 @@ impl Port {
     pub fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
         match &mut self.port {
             Some(p) => {
-                let mut buf = [0u8; 2]; // Expecting 2 bytes for Pong (0x01 0xFF)
-                let mut total_bytes = 0;
-                let expected_bytes = 2;
+                let mut buf = Vec::new();
                 let timeout = Duration::from_millis(1000); // 1-second timeout
                 let start = Instant::now();
 
-                // Read until we get 2 bytes or timeout
-                while total_bytes < expected_bytes && start.elapsed() < timeout {
-                    match p.read(&mut buf[total_bytes..]) {
+                // Read one byte at a time until 0xFF or timeout
+                while start.elapsed() < timeout {
+                    let mut byte = [0u8; 1];
+                    match p.read(&mut byte) {
+                        Ok(1) => {
+                            buf.push(byte[0]);
+                            eprintln!("Read byte: 0x{:02X}, buffer: {:?}", byte[0], buf);
+                            if byte[0] == 0xFF {
+                                break; // Stop reading when delimiter 0xFF is found
+                            }
+                        }
                         Ok(n) => {
-                            total_bytes += n;
-                            info!(
-                                "Read {} bytes, total: {}, buffer: {:?}",
-                                n,
-                                total_bytes,
-                                &buf[..total_bytes]
-                            );
+                            info!("Unexpected read count: {}", n);
+                            return Err(SerialPortError::ErrorReadingPort);
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                            info!("Timeout!");
-                            continue; // Keep trying until timeout
+                            info!("Timeout while reading byte");
+                            continue;
                         }
                         Err(_) => return Err(SerialPortError::ErrorReadingPort),
                     }
                 }
 
-                if total_bytes < expected_bytes {
+                if buf.is_empty() || buf[buf.len() - 1] != 0xFF {
+                    info!("Failed to read complete message with 0xFF delimiter");
                     return Err(SerialPortError::ErrorReadingPort);
                 }
 
                 // Decode the buffer
                 let msg = SerialMessage::decode(&buf)
                     .map_err(|e| SerialPortError::ErrorDecodingMsg(e))?;
+                info!("Decoded message: {:?}", msg);
                 Ok(msg)
             }
             None => Err(SerialPortError::PortNotConnected),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    pub fn test_auto_connect() {
+        let mut port = Port::new();
+        match port.auto_connect(115200, Duration::from_micros(1000)) {
+            Err(e) => eprintln!("Error: {:?}", e),
+            Ok(_) => {}
+        }
+
+        assert!(port.is_connected());
     }
 }

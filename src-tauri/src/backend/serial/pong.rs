@@ -3,6 +3,7 @@ use bytes::BufMut;
 use super::error::SerialMessageError;
 use super::serial_message::RLPxMessage;
 
+#[derive(Debug)]
 pub struct PongMessage {}
 
 impl RLPxMessage for PongMessage {
