@@ -1,8 +1,8 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 use tracing::info;
 
@@ -29,7 +29,7 @@ struct PortRecord {
 
 pub struct SerialWorker {
     status: Arc<Mutex<SerialWorkerStatus>>,
-    thread: Option<thread::JoinHandle<()>>,
+    thread: Option<tokio::task::JoinHandle<()>>,
     tx: Option<Sender<SerialWorkerMessage>>,
     rx: Option<Receiver<SerialWorkerMessage>>,
     muted: Arc<AtomicBool>,
@@ -56,77 +56,96 @@ impl SerialWorker {
         self.tx = Some(tx);
         self.rx = Some(rx);
 
-        let st = self.status.clone();
-        let muted = self.muted.clone();
+        let status = self.status.clone();
+        let _muted = self.muted.clone();
         let deafen = self.deafen.clone();
         let disconnect = self.disconnect.clone();
 
-        let t = thread::spawn(move || {
-            //inicializo el puerto serie e intento conectarlo al com guardado en la configuracion
+        let handle = tokio::spawn(async move {
             let mut port = Port::new();
-            match port_name {
-                Some(p) => {
-                    match port.connect(p.as_str(), 115200, Duration::from_millis(100)) {
-                        Ok(_) => {
-                            *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
-                        }
-                        Err(_e) => {
-                            //No se pudo conectar al puerto
-                            *st.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
-                        }
+            if let Some(p) = port_name {
+                match port.connect(PathBuf::from(p.clone()), 115200, Duration::from_millis(100)) {
+                    Ok(_) => {
+                        *status.lock().unwrap() = SerialWorkerStatus::PortConnected;
+                        info!("Connected to port: {}", p);
+                    }
+                    Err(e) => {
+                        *status.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
+                        info!("Failed to connect to port {}: {:?}", p, e);
                     }
                 }
-                None => {} //Si no hay paramatro, entonces no habia configuracion guardada
             }
 
             loop {
-                let current_status;
-                {
-                    current_status = *st.lock().unwrap();
-                }
-
+                let current_status = *status.lock().unwrap();
                 match current_status {
                     SerialWorkerStatus::PortNotConnected => {
-                        match port.auto_connect(9600, Duration::from_millis(10000)) {
+                        match port.auto_connect(9600, Duration::from_millis(10000)).await {
                             Ok(_) => {
-                                *st.lock().unwrap() = SerialWorkerStatus::PortConnected;
+                                *status.lock().unwrap() = SerialWorkerStatus::PortConnected;
+                                info!("Auto-connected to port");
                             }
-                            Err(_) => {
-                                *st.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
+                            Err(e) => {
+                                *status.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
+                                info!("Auto-connect failed: {:?}", e);
                             }
                         }
                     }
                     SerialWorkerStatus::PortConnected => {
-                        //logica de msg con la placa
-                        if let Ok(msg) = port.read_message() {
-                            match msg {
-                                SerialMessage::Ping(_) => {
-                                    info!("msg PING recvd");
-                                }
-                                SerialMessage::Pong(_) => {
-                                    info!("msg PONG recvd");
+                        if disconnect.load(Ordering::SeqCst) {
+                            if let Err(e) = port.disconnect() {
+                                info!("Failed to disconnect port: {:?}", e);
+                            }
+                            *status.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
+                            continue;
+                        }
+
+                        if !deafen.load(Ordering::SeqCst) {
+                            match port.read_message().await {
+                                Ok(msg) => match msg {
+                                    SerialMessage::Ping(_) => {
+                                        info!("msg PING received");
+                                    }
+                                    SerialMessage::Pong(_) => {
+                                        info!("msg PONG received");
+                                    }
+                                },
+                                Err(e) => {
+                                    info!("Error reading message: {:?}", e);
+                                    *status.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
                                 }
                             }
                         }
                     }
                     SerialWorkerStatus::Stopped => {
+                        if port.is_connected() {
+                            if let Err(e) = port.disconnect() {
+                                info!("Failed to disconnect port: {:?}", e);
+                            }
+                        }
                         break;
                     }
                 }
-                match rx_thread.recv_timeout(Duration::from_millis(10)) {
-                    Ok(msg) => match msg {
+
+                if let Ok(msg) = rx_thread.try_recv() {
+                    match msg {
                         SerialWorkerMessage::Stop => {
                             if port.is_connected() {
-                                port.disconnect().unwrap();
+                                if let Err(e) = port.disconnect() {
+                                    info!("Failed to disconnect port: {:?}", e);
+                                }
                             }
+                            *status.lock().unwrap() = SerialWorkerStatus::Stopped;
                             break;
                         }
-                    },
-                    Err(_) => {}
+                    }
                 }
+
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         });
-        self.thread = Some(t);
+
+        self.thread = Some(handle);
 
         Ok(())
     }
@@ -142,15 +161,15 @@ impl SerialWorker {
         }
 
         if let Some(handle) = self.thread.take() {
-            match handle.join() {
-                Ok(_) => {
-                    self.thread = None;
-                }
-                Err(e) => {
-                    info!("Error cerrando thread: {:?}", e);
-                    return Err(SerialPortError::ErrorClosingThread);
-                }
-            }
+            // match handle.drop() {
+            //     Ok(_) => {
+            //         self.thread = None;
+            //     }
+            //     Err(e) => {
+            //         info!("Error cerrando thread: {:?}", e);
+            //         return Err(SerialPortError::ErrorClosingThread);
+            //     }
+            // }
         }
 
         Ok(())

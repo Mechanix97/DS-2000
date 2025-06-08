@@ -1,7 +1,6 @@
 use crate::backend::serial::error::*;
-use serialport::SerialPort;
-use std::io::BufRead;
-use std::io::BufReader;
+use serial2_tokio::SerialPort;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 use tracing::info;
@@ -10,10 +9,10 @@ use super::ping::PingMessage;
 use super::serial_message::SerialMessage;
 
 pub struct Port {
-    name: Option<String>,
+    name: Option<PathBuf>,
     baudrate: u32,
     timeout: Duration,
-    port: Option<Box<dyn SerialPort>>,
+    port: Option<SerialPort>,
 }
 
 impl Port {
@@ -28,7 +27,7 @@ impl Port {
 
     pub fn connect(
         &mut self,
-        port_name: &str,
+        port_name: PathBuf,
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
@@ -36,23 +35,19 @@ impl Port {
             Some(_) => {
                 return Err(SerialPortError::PortAlreadyConnected);
             }
-            None => {
-                match serialport::new(port_name, baudrate)
-                    .timeout(timeout)
-                    .flow_control(serialport::FlowControl::None)
-                    .open()
-                {
-                    Ok(p) => {
-                        info!("Se conecto al puerto: {}", port_name);
-                        self.name = Some(String::from(port_name));
-                        self.baudrate = baudrate;
-                        self.timeout = timeout;
-                        self.port = Some(p);
-                        Ok(())
-                    }
-                    Err(_) => Err(SerialPortError::PortNotAvailable),
+            None => match SerialPort::open(port_name.clone(), baudrate) {
+                Ok(p) => {
+                    info!("Se conecto al puerto: {:?}", port_name);
+                    p.set_dtr(true).unwrap();
+                    p.set_rts(true).unwrap();
+                    self.name = Some(port_name);
+                    self.baudrate = baudrate;
+                    self.timeout = timeout;
+                    self.port = Some(p);
+                    Ok(())
                 }
-            }
+                Err(_) => Err(SerialPortError::PortNotAvailable),
+            },
         }
     }
 
@@ -64,15 +59,15 @@ impl Port {
         Ok(())
     }
 
-    pub fn get_ports(&self) -> Result<Vec<String>, SerialPortError> {
+    pub fn get_ports(&self) -> Result<Vec<PathBuf>, SerialPortError> {
         let mut ports = vec![];
-        for port in serialport::available_ports().unwrap() {
-            ports.push(port.port_name);
+        for port in SerialPort::available_ports().unwrap() {
+            ports.push(port);
         }
         Ok(ports)
     }
 
-    pub fn auto_connect(
+    pub async fn auto_connect(
         &mut self,
         baudrate: u32,
         timeout: Duration,
@@ -80,9 +75,9 @@ impl Port {
         let mut available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
-            info!("Trying to connect to port {}", p);
-            match self.connect(p.as_str(), baudrate, timeout) {
-                Ok(_) => match self.authenticate() {
+            info!("Trying to connect to port {:?}", p);
+            match self.connect(p, baudrate, timeout) {
+                Ok(_) => match self.authenticate().await {
                     Ok(_) => {
                         return Ok(());
                     }
@@ -101,10 +96,12 @@ impl Port {
     }
 
     //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
-    pub fn authenticate(&mut self) -> Result<(), SerialPortError> {
-        self.send_message(&SerialMessage::Ping(PingMessage {}))?;
-        let msg = self.read_message()?;
-
+    pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
+        self.send_message(&SerialMessage::Ping(PingMessage {}))
+            .await?;
+        eprintln!("ping sent");
+        let msg = self.read_message().await?;
+        eprintln!("pong recvd");
         match msg {
             SerialMessage::Pong(_) => {
                 info!("Authentication succesful");
@@ -168,16 +165,13 @@ impl Port {
         }
     }
 
-    pub fn send_message(&mut self, msg: &SerialMessage) -> Result<(), SerialPortError> {
+    pub async fn send_message(&mut self, msg: &SerialMessage) -> Result<(), SerialPortError> {
         let mut buf = vec![];
         msg.encode(&mut buf)
             .map_err(|e| SerialPortError::ErrorEncodingMsg(e))?;
         match &mut self.port {
             Some(p) => {
-                p.as_mut()
-                    .write(&buf)
-                    .map_err(|_| SerialPortError::PortNotConnected)?;
-                p.flush().map_err(|_| SerialPortError::PortNotConnected)?;
+                p.write(&buf).await;
 
                 Ok(())
             }
@@ -185,7 +179,7 @@ impl Port {
         }
     }
 
-    pub fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
+    pub async fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
         match &mut self.port {
             Some(p) => {
                 let mut buf = Vec::new();
@@ -195,7 +189,7 @@ impl Port {
                 // Read one byte at a time until 0xFF or timeout
                 while start.elapsed() < timeout {
                     let mut byte = [0u8; 1];
-                    match p.read(&mut byte) {
+                    match p.read(&mut byte).await {
                         Ok(1) => {
                             buf.push(byte[0]);
                             eprintln!("Read byte: 0x{:02X}, buffer: {:?}", byte[0], buf);
@@ -233,13 +227,12 @@ impl Port {
 
 #[cfg(test)]
 mod test {
-
     use super::*;
 
-    #[test]
-    pub fn test_auto_connect() {
+    #[tokio::test]
+    pub async fn test_auto_connect() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_micros(1000)) {
+        match port.auto_connect(115200, Duration::from_micros(1000)).await {
             Err(e) => eprintln!("Error: {:?}", e),
             Ok(_) => {}
         }
