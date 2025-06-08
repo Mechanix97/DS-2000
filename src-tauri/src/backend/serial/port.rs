@@ -99,9 +99,7 @@ impl Port {
     pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
         self.send_message(&SerialMessage::Ping(PingMessage {}))
             .await?;
-        eprintln!("ping sent");
         let msg = self.read_message().await?;
-        eprintln!("pong recvd");
         match msg {
             SerialMessage::Pong(_) => {
                 info!("Authentication succesful");
@@ -112,50 +110,6 @@ impl Port {
                 Err(SerialPortError::AuthenticationFailed)
             }
         }
-
-        // match &mut self.port {
-        //     Some(p) => {
-        //         // Enviar PING\n
-        //         p.as_mut()
-        //             .write(b"PING\n")
-        //             .map_err(|_| SerialPortError::PortNotConnected)?;
-        //         p.flush().map_err(|_| SerialPortError::PortNotConnected)?; // Asegurar que se envíe
-
-        //         // Buffer para leer
-        //         let mut buf = [0u8; 64];
-        //         let mut total_bytes = 0;
-        //         let expected_bytes = 5; // "PONG\n" o "pong\n" tiene 5 bytes
-        //         let timeout = Duration::from_millis(1000); // Timeout total de 1 segundo
-        //         let start = Instant::now();
-
-        //         // Leer hasta obtener los bytes esperados o timeout
-        //         while total_bytes < expected_bytes && start.elapsed() < timeout {
-        //             match p.read(&mut buf[total_bytes..]) {
-        //                 Ok(n) => {
-        //                     total_bytes += n;
-        //                 }
-        //                 Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-        //                     // Continuar si hay timeout parcial
-        //                     continue;
-        //                 }
-        //                 Err(_) => return Err(SerialPortError::PortNotConnected),
-        //             }
-        //         }
-
-        //         // Convertir a string
-        //         let response = String::from_utf8_lossy(&buf[..total_bytes]).to_string();
-
-        //         // Verificar respuesta (ajusta según el firmware: "PONG\n" o "pong\n")
-        //         if response != "PONG\r\n" {
-        //             // Cambia a "pong\n" si modificaste el firmware
-        //             return Err(SerialPortError::AuthenticationFailed);
-        //         }
-
-        //         info!("Autenticación exitosa");
-        //         Ok(())
-        //     }
-        //     None => Err(SerialPortError::PortNotConnected),
-        // }
     }
 
     pub fn is_connected(&self) -> bool {
