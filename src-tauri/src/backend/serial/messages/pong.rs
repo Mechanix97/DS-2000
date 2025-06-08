@@ -1,7 +1,7 @@
 use bytes::BufMut;
 
-use super::error::SerialMessageError;
-use super::serial_message::RLPxMessage;
+use  crate::backend::serial::error::SerialMessageError;
+use crate::backend::serial::serial_message::RLPxMessage;
 
 #[derive(Debug)]
 pub struct PongMessage {}

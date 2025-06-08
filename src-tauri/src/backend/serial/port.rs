@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tracing::info;
 
-use super::ping::PingMessage;
+use super::messages::ping::PingMessage;
 use super::serial_message::SerialMessage;
 
 pub struct Port {
@@ -171,7 +171,7 @@ impl Port {
             .map_err(|e| SerialPortError::ErrorEncodingMsg(e))?;
         match &mut self.port {
             Some(p) => {
-                p.write(&buf).await;
+                p.write(&buf).await.unwrap();
 
                 Ok(())
             }
@@ -238,5 +238,9 @@ mod test {
         }
 
         assert!(port.is_connected());
+
+        port.disconnect().unwrap();
     }
+
+
 }

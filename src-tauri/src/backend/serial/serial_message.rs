@@ -1,8 +1,8 @@
 use bytes::BufMut;
 
 use super::error::SerialMessageError;
-use super::ping::PingMessage;
-use super::pong::PongMessage;
+use super::messages::ping::PingMessage;
+use super::messages::pong::PongMessage;
 
 #[derive(Debug)]
 pub enum SerialMessage {
