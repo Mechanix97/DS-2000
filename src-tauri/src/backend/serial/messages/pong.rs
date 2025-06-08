@@ -9,7 +9,6 @@ pub struct PongMessage {}
 impl RLPxMessage for PongMessage {
     const CODE: u8 = 0x01;
     fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError> {
-        buf.put_u8(PongMessage::CODE);
         buf.put_u8(0xFF);
         Ok(())
     }

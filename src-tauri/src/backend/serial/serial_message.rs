@@ -28,6 +28,7 @@ impl SerialMessage {
     }
 
     pub fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError> {
+        buf.put_u8(self.code());
         match self {
             SerialMessage::Ping(msg) => msg.encode(buf),
             SerialMessage::Pong(msg) => msg.encode(buf),
