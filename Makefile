@@ -18,4 +18,4 @@ lint:
 	@cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
 
 test:
-	@cd src-tauri && cargo test
+	@cd src-tauri && cargo test -- --nocapture

@@ -1,8 +1,7 @@
 use crate::backend::serial::error::*;
 use serial2_tokio::SerialPort;
 use std::path::PathBuf;
-use std::time::Duration;
-use std::time::Instant;
+use tokio::time::{timeout, Duration};
 use tracing::info;
 
 use super::messages::ping::PingMessage;
@@ -37,7 +36,7 @@ impl Port {
             }
             None => match SerialPort::open(port_name.clone(), baudrate) {
                 Ok(p) => {
-                    info!("Se conecto al puerto: {:?}", port_name);
+                    eprintln!("Se conecto al puerto: {:?}", port_name);
                     p.set_dtr(true).unwrap();
                     p.set_rts(true).unwrap();
                     self.name = Some(port_name);
@@ -97,9 +96,16 @@ impl Port {
 
     //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
     pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
+        eprintln!("WRITE");
         self.send_message(&SerialMessage::Ping(PingMessage {}))
             .await?;
-        let msg = self.read_message().await?;
+        eprintln!("WRITE don");
+        let timeout_duration = Duration::from_secs(1); // 5-second timeout
+    let msg = timeout(timeout_duration, self.read_message())
+        .await
+        .map_err(|_| SerialPortError::TimedOut)??; // Convert timeout error to your error type
+    
+        eprintln!("rad");
         match msg {
             SerialMessage::Pong(_) => {
                 info!("Authentication succesful");
@@ -134,48 +140,59 @@ impl Port {
     }
 
     pub async fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
-        match &mut self.port {
-            Some(p) => {
-                let mut buf = Vec::new();
-                let timeout = Duration::from_millis(1000); // 1-second timeout
-                let start = Instant::now();
-
-                // Read one byte at a time until 0xFF or timeout
-                while start.elapsed() < timeout {
-                    let mut byte = [0u8; 1];
-                    match p.read(&mut byte).await {
-                        Ok(1) => {
-                            buf.push(byte[0]);
-                            eprintln!("Read byte: 0x{:02X}, buffer: {:?}", byte[0], buf);
-                            if byte[0] == 0xFF {
-                                break; // Stop reading when delimiter 0xFF is found
-                            }
-                        }
-                        Ok(n) => {
-                            info!("Unexpected read count: {}", n);
-                            return Err(SerialPortError::ErrorReadingPort);
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                            info!("Timeout while reading byte");
-                            continue;
-                        }
-                        Err(_) => return Err(SerialPortError::ErrorReadingPort),
-                    }
-                }
-
-                if buf.is_empty() || buf[buf.len() - 1] != 0xFF {
-                    info!("Failed to read complete message with 0xFF delimiter");
-                    return Err(SerialPortError::ErrorReadingPort);
-                }
-
-                // Decode the buffer
-                let msg = SerialMessage::decode(&buf)
-                    .map_err(|e| SerialPortError::ErrorDecodingMsg(e))?;
-                info!("Decoded message: {:?}", msg);
-                Ok(msg)
+        if let Some(port) = &mut self.port {
+            let mut buffer = [0u8, 30];
+            port.read(&mut buffer).await.map_err(|_| SerialPortError::ErrorReadingPort)?;
+            match SerialMessage::decode(&buffer[..2]) {
+                Ok(msg ) =>  Ok(msg),
+                Err(_) => Err(SerialPortError::ErrorReadingPort) 
             }
-            None => Err(SerialPortError::PortNotConnected),
+        } else {
+            Err(SerialPortError::PortNotConnected) 
         }
+
+        // match &mut self.port {
+        //     Some(p) => {
+        //         let mut buf = Vec::new();
+        //         let timeout = Duration::from_millis(1000); // 1-second timeout
+        //         let start = Instant::now();
+
+        //         // Read one byte at a time until 0xFF or timeout
+        //         while start.elapsed() < timeout {
+        //             let mut byte = [0u8; 1];
+        //             match p.read(&mut byte).await {
+        //                 Ok(1) => {
+        //                     buf.push(byte[0]);
+        //                     eprintln!("Read byte: 0x{:02X}, buffer: {:?}", byte[0], buf);
+        //                     if byte[0] == 0xFF {
+        //                         break; // Stop reading when delimiter 0xFF is found
+        //                     }
+        //                 }
+        //                 Ok(n) => {
+        //                     info!("Unexpected read count: {}", n);
+        //                     return Err(SerialPortError::ErrorReadingPort);
+        //                 }
+        //                 Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+        //                     info!("Timeout while reading byte");
+        //                     continue;
+        //                 }
+        //                 Err(_) => return Err(SerialPortError::ErrorReadingPort),
+        //             }
+        //         }
+
+        //         if buf.is_empty() || buf[buf.len() - 1] != 0xFF {
+        //             info!("Failed to read complete message with 0xFF delimiter");
+        //             return Err(SerialPortError::ErrorReadingPort);
+        //         }
+
+        //         // Decode the buffer
+        //         let msg = SerialMessage::decode(&buf)
+        //             .map_err(|e| SerialPortError::ErrorDecodingMsg(e))?;
+        //         info!("Decoded message: {:?}", msg);
+        //         Ok(msg)
+        //     }
+        //     None => Err(SerialPortError::PortNotConnected),
+        // }
     }
 }
 
