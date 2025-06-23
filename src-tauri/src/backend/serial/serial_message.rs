@@ -12,18 +12,12 @@ impl Decoder for SerialMessageCodec {
     type Error = SerialPortError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, SerialPortError> {
-        // Buscamos el delimitador 0xFF
         if let Some(pos) = src.iter().position(|&b| b == 0xFF) {
-            // Extraemos hasta el delimitador incluido
             let frame = src.split_to(pos + 1);
 
-            // Removemos el delimitador para decodificar solo el contenido
             let data = &frame[..frame.len() - 1];
-
-            // Decodificamos el mensaje (propagando el error si falla)
             Ok(Some(SerialMessage::decode(data)?))
         } else {
-            // Si no encontramos delimitador, seguimos leyendo
             Ok(None)
         }
     }
@@ -33,10 +27,7 @@ impl Encoder<SerialMessage> for SerialMessageCodec {
     type Error = SerialPortError;
 
     fn encode(&mut self, item: SerialMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        // Codificamos el mensaje en el buffer
         item.encode(dst)?;
-
-        // Agregamos el delimitador 0xFF al final
         dst.put_u8(0xFF);
 
         Ok(())

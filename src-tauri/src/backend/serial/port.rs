@@ -41,8 +41,6 @@ impl Port {
         }
         match SerialPort::open(port_name.clone(), baudrate) {
             Ok(p) => {
-                eprintln!("Se conectó al puerto: {:?}", port_name);
-
                 p.set_dtr(true).unwrap();
                 p.set_rts(true).unwrap();
 
@@ -83,7 +81,7 @@ impl Port {
         let mut available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
-            eprintln!("Trying to connect to port {:?}", p);
+            info!("Trying to connect to port {:?}", p);
             match self.connect(p, baudrate, timeout) {
                 Ok(_) => match self.authenticate().await {
                     Ok(_) => {
@@ -104,17 +102,14 @@ impl Port {
     }
 
     pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
-        eprintln!("WRITE");
         self.send_message(&SerialMessage::Ping(PingMessage {}))
             .await?;
-        eprintln!("WRITE done");
 
         let timeout_duration = Duration::from_secs(1);
         let msg = timeout(timeout_duration, self.read_message())
             .await
             .map_err(|_| SerialPortError::TimedOut)??;
 
-        eprintln!("READ");
         match msg {
             SerialMessage::Pong(_) => {
                 info!("Authentication successful");
