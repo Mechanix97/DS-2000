@@ -19,7 +19,7 @@ log = "0.4"
 dotenvy = "0.15"
 aes-gcm = "0.10"
 hex = "0.4"
-bytes = { version = "1.6.0", features = ["serde"] }
+bytes = { version = "1.6.0" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 

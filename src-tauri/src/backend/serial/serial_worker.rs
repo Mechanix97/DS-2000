@@ -50,7 +50,7 @@ impl SerialWorker {
         }
     }
 
-    pub fn start(&mut self, port_name: Option<String>) -> Result<(), SerialPortError> {
+    pub async fn start(&mut self, port_name: Option<String>) -> Result<(), SerialPortError> {
         let (tx, rx_thread) = mpsc::channel();
         let (_tx_thread, rx) = mpsc::channel();
         self.tx = Some(tx);
