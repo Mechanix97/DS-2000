@@ -64,7 +64,11 @@ impl SerialWorker {
         let handle = tokio::spawn(async move {
             let mut port = Port::new();
             if let Some(p) = port_name {
-                match port.connect(PathBuf::from(p.clone()), 115200, Duration::from_millis(100)) {
+                match port.connect(
+                    &PathBuf::from(p.clone()),
+                    115200,
+                    Duration::from_millis(100),
+                ) {
                     Ok(_) => {
                         *status.lock().unwrap() = SerialWorkerStatus::PortConnected;
                         info!("Connected to port: {}", p);
@@ -101,7 +105,7 @@ impl SerialWorker {
                         }
 
                         if !deafen.load(Ordering::SeqCst) {
-                            match port.read_message().await {
+                            match port.read_message(Duration::from_millis(100)).await {
                                 Ok(msg) => match msg {
                                     SerialMessage::Ping(_) => {
                                         info!("msg PING received");

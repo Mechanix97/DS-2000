@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio_util::codec::Framed;
 
 pub struct Port {
-    name: Option<PathBuf>,
+    name: Option<String>,
     baudrate: u32,
     timeout: Duration,
     framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
@@ -32,7 +32,7 @@ impl Port {
 
     pub fn connect(
         &mut self,
-        port_name: PathBuf,
+        port_name: &PathBuf,
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
@@ -46,8 +46,7 @@ impl Port {
 
                 let framed = Framed::new(p, SerialMessageCodec);
                 self.framed = Some(Arc::new(Mutex::new(framed)));
-
-                self.name = Some(port_name);
+                self.name = port_name.to_str().map(|s| s.to_string());
                 self.baudrate = baudrate;
                 self.timeout = timeout;
 
@@ -82,14 +81,14 @@ impl Port {
         available_ports.sort();
         for p in available_ports {
             info!("Trying to connect to port {:?}", p);
-            match self.connect(p, baudrate, timeout) {
+            match self.connect(&p, baudrate, timeout) {
                 Ok(_) => match self.authenticate().await {
                     Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        info!("Disconnecting");
-                        self.disconnect().map_err(|_| e)?; // Si falla el disconnect, devolvemos el error original
+                        info!("Disconnecting from port {:?}", p);
+                        self.disconnect().map_err(|_| e)?;
                         continue;
                     }
                 },
@@ -105,10 +104,7 @@ impl Port {
         self.send_message(&SerialMessage::Ping(PingMessage {}))
             .await?;
 
-        let timeout_duration = Duration::from_secs(1);
-        let msg = timeout(timeout_duration, self.read_message())
-            .await
-            .map_err(|_| SerialPortError::TimedOut)??;
+        let msg = self.read_message(Duration::from_millis(100)).await?;
 
         match msg {
             SerialMessage::Pong(_) => {
@@ -136,13 +132,17 @@ impl Port {
         }
     }
 
-    pub async fn read_message(&self) -> Result<SerialMessage, SerialPortError> {
+    pub async fn read_message(
+        &self,
+        timeout_duration: Duration,
+    ) -> Result<SerialMessage, SerialPortError> {
         if let Some(framed_mutex) = &self.framed {
             let mut framed = framed_mutex.lock().await;
-            match framed.next().await {
-                Some(Ok(msg)) => Ok(msg),
-                Some(Err(e)) => Err(e),
-                None => Err(SerialPortError::PortNotConnected),
+            match timeout(timeout_duration, framed.next()).await {
+                Ok(Some(Ok(msg))) => Ok(msg),
+                Ok(Some(Err(e))) => Err(e),
+                Ok(None) => Err(SerialPortError::PortNotConnected),
+                Err(_) => Err(SerialPortError::TimedOut),
             }
         } else {
             Err(SerialPortError::PortNotConnected)
@@ -183,7 +183,7 @@ mod test {
             .await
             .unwrap();
 
-        let pong = port.read_message().await.unwrap();
+        let pong = port.read_message(Duration::from_millis(100)).await.unwrap();
 
         assert_eq!(pong, SerialMessage::Pong(PongMessage {}));
 
