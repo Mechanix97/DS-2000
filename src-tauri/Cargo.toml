@@ -26,6 +26,9 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tokio = { version = "1.0", features = ["full"] }
 tokio-serial = "5.4"
 serial2-tokio = "0.1"
+tokio-util = "0.7.15"
+futures-util = "0.3"
+
 
 [target.'cfg(windows)'.dependencies]
 named_pipe = "0.4"

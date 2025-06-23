@@ -3,7 +3,7 @@ use bytes::BufMut;
 use crate::backend::serial::error::SerialMessageError;
 use crate::backend::serial::serial_message::RLPxMessage;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PingMessage {}
 
 impl RLPxMessage for PingMessage {

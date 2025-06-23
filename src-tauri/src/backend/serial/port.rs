@@ -1,4 +1,5 @@
 use crate::backend::serial::error::*;
+use crate::backend::serial::serial_message::SerialMessageCodec;
 use serial2_tokio::SerialPort;
 use std::path::PathBuf;
 use tokio::time::{timeout, Duration};
@@ -7,11 +8,16 @@ use tracing::info;
 use super::messages::ping::PingMessage;
 use super::serial_message::SerialMessage;
 
+use futures_util::{SinkExt, StreamExt};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio_util::codec::Framed;
+
 pub struct Port {
     name: Option<PathBuf>,
     baudrate: u32,
     timeout: Duration,
-    port: Option<SerialPort>,
+    framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
 }
 
 impl Port {
@@ -20,7 +26,7 @@ impl Port {
             name: None,
             baudrate: 0,
             timeout: Duration::from_millis(0),
-            port: None,
+            framed: None,
         }
     }
 
@@ -30,23 +36,26 @@ impl Port {
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
-        match self.port {
-            Some(_) => {
-                return Err(SerialPortError::PortAlreadyConnected);
+        if self.is_connected() {
+            return Err(SerialPortError::PortAlreadyConnected);
+        }
+        match SerialPort::open(port_name.clone(), baudrate) {
+            Ok(p) => {
+                eprintln!("Se conectó al puerto: {:?}", port_name);
+
+                p.set_dtr(true).unwrap();
+                p.set_rts(true).unwrap();
+
+                let framed = Framed::new(p, SerialMessageCodec);
+                self.framed = Some(Arc::new(Mutex::new(framed)));
+
+                self.name = Some(port_name);
+                self.baudrate = baudrate;
+                self.timeout = timeout;
+
+                Ok(())
             }
-            None => match SerialPort::open(port_name.clone(), baudrate) {
-                Ok(p) => {
-                    eprintln!("Se conecto al puerto: {:?}", port_name);
-                    p.set_dtr(true).unwrap();
-                    p.set_rts(true).unwrap();
-                    self.name = Some(port_name);
-                    self.baudrate = baudrate;
-                    self.timeout = timeout;
-                    self.port = Some(p);
-                    Ok(())
-                }
-                Err(_) => Err(SerialPortError::PortNotAvailable),
-            },
+            Err(_) => Err(SerialPortError::PortNotAvailable),
         }
     }
 
@@ -54,7 +63,7 @@ impl Port {
         self.name = None;
         self.baudrate = 0;
         self.timeout = Duration::from_millis(0);
-        self.port = None;
+        self.framed = None;
         Ok(())
     }
 
@@ -74,15 +83,15 @@ impl Port {
         let mut available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
-            info!("Trying to connect to port {:?}", p);
+            eprintln!("Trying to connect to port {:?}", p);
             match self.connect(p, baudrate, timeout) {
                 Ok(_) => match self.authenticate().await {
                     Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        info!("Desconnecting");
-                        self.disconnect().map_err(|_| e)?;
+                        info!("Disconnecting");
+                        self.disconnect().map_err(|_| e)?; // Si falla el disconnect, devolvemos el error original
                         continue;
                     }
                 },
@@ -94,61 +103,51 @@ impl Port {
         Err(SerialPortError::PortNotConnected)
     }
 
-    //Metodo para autenticarse con el puerto serie. Habria que ver como se complicarlo para que no se pueda acceder al programa con un dispositivo no autorizado
     pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
         eprintln!("WRITE");
         self.send_message(&SerialMessage::Ping(PingMessage {}))
             .await?;
-        eprintln!("WRITE don");
-        let timeout_duration = Duration::from_secs(1); // 5-second timeout
+        eprintln!("WRITE done");
+
+        let timeout_duration = Duration::from_secs(1);
         let msg = timeout(timeout_duration, self.read_message())
             .await
-            .map_err(|_| SerialPortError::TimedOut)??; // Convert timeout error to your error type
+            .map_err(|_| SerialPortError::TimedOut)??;
 
-        eprintln!("rad");
+        eprintln!("READ");
         match msg {
             SerialMessage::Pong(_) => {
-                info!("Authentication succesful");
+                info!("Authentication successful");
                 Ok(())
             }
             _ => {
-                info!("Autentication failed");
+                info!("Authentication failed");
                 Err(SerialPortError::AuthenticationFailed)
             }
         }
     }
 
     pub fn is_connected(&self) -> bool {
-        match self.port {
-            Some(_) => true,
-            None => false,
+        self.framed.is_some()
+    }
+
+    pub async fn send_message(&self, msg: &SerialMessage) -> Result<(), SerialPortError> {
+        if let Some(framed_mutex) = &self.framed {
+            let mut framed = framed_mutex.lock().await;
+            framed.send(msg.clone()).await?;
+            Ok(())
+        } else {
+            Err(SerialPortError::PortNotConnected)
         }
     }
 
-    pub async fn send_message(&mut self, msg: &SerialMessage) -> Result<(), SerialPortError> {
-        let mut buf = vec![];
-        msg.encode(&mut buf)
-            .map_err(|e| SerialPortError::ErrorEncodingMsg(e))?;
-        match &mut self.port {
-            Some(p) => {
-                p.write(&buf).await.unwrap();
-
-                Ok(())
-            }
-            None => Err(SerialPortError::PortNotConnected),
-        }
-    }
-
-    pub async fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
-        if let Some(port) = &mut self.port {
-            let mut buffer = [0; 256];
-            port.read(&mut buffer)
-                .await
-                .map_err(|_| SerialPortError::ErrorReadingPort)?;
-            eprintln!("{buffer:?}");
-            match SerialMessage::decode(&buffer[..2]) {
-                Ok(msg) => Ok(msg),
-                Err(_) => Err(SerialPortError::ErrorReadingPort),
+    pub async fn read_message(&self) -> Result<SerialMessage, SerialPortError> {
+        if let Some(framed_mutex) = &self.framed {
+            let mut framed = framed_mutex.lock().await;
+            match framed.next().await {
+                Some(Ok(msg)) => Ok(msg),
+                Some(Err(e)) => Err(e),
+                None => Err(SerialPortError::PortNotConnected),
             }
         } else {
             Err(SerialPortError::PortNotConnected)
