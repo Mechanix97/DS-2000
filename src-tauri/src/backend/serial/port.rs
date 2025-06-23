@@ -56,7 +56,12 @@ impl Port {
         }
     }
 
-    pub fn disconnect(&mut self) -> Result<(), SerialPortError> {
+    pub async fn disconnect(&mut self) -> Result<(), SerialPortError> {
+        if let Some(framed_mutex) = &self.framed {
+            let mut framed = framed_mutex.lock().await;
+            let _ = framed.flush().await;
+            drop(framed);
+        }
         self.name = None;
         self.baudrate = 0;
         self.timeout = Duration::from_millis(0);
@@ -88,7 +93,7 @@ impl Port {
                     }
                     Err(e) => {
                         info!("Disconnecting from port {:?}", p);
-                        self.disconnect().map_err(|_| e)?;
+                        self.disconnect().await.map_err(|_| e)?;
                         continue;
                     }
                 },
@@ -159,20 +164,20 @@ mod test {
     #[tokio::test]
     pub async fn test_auto_connect() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_micros(1000)).await {
+        match port.auto_connect(115200, Duration::from_millis(1000)).await {
             Err(e) => eprintln!("Error: {:?}", e),
             Ok(_) => {}
         }
 
         assert!(port.is_connected());
 
-        port.disconnect().unwrap();
+        port.disconnect().await.unwrap();
     }
 
     #[tokio::test]
     pub async fn test_double_ping() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_micros(1000)).await {
+        match port.auto_connect(115200, Duration::from_millis(1000)).await {
             Err(e) => eprintln!("Error: {:?}", e),
             Ok(_) => {}
         }
@@ -187,6 +192,6 @@ mod test {
 
         assert_eq!(pong, SerialMessage::Pong(PongMessage {}));
 
-        port.disconnect().unwrap();
+        port.disconnect().await.unwrap();
     }
 }

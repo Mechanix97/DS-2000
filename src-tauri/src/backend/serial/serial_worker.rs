@@ -97,7 +97,7 @@ impl SerialWorker {
                     }
                     SerialWorkerStatus::PortConnected => {
                         if disconnect.load(Ordering::SeqCst) {
-                            if let Err(e) = port.disconnect() {
+                            if let Err(e) = port.disconnect().await {
                                 info!("Failed to disconnect port: {:?}", e);
                             }
                             *status.lock().unwrap() = SerialWorkerStatus::PortNotConnected;
@@ -123,7 +123,7 @@ impl SerialWorker {
                     }
                     SerialWorkerStatus::Stopped => {
                         if port.is_connected() {
-                            if let Err(e) = port.disconnect() {
+                            if let Err(e) = port.disconnect().await {
                                 info!("Failed to disconnect port: {:?}", e);
                             }
                         }
@@ -135,7 +135,7 @@ impl SerialWorker {
                     match msg {
                         SerialWorkerMessage::Stop => {
                             if port.is_connected() {
-                                if let Err(e) = port.disconnect() {
+                                if let Err(e) = port.disconnect().await {
                                     info!("Failed to disconnect port: {:?}", e);
                                 }
                             }
