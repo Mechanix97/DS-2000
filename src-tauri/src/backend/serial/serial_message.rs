@@ -4,7 +4,7 @@ use super::error::SerialMessageError;
 use super::messages::ping::PingMessage;
 use super::messages::pong::PongMessage;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum SerialMessage {
     Ping(PingMessage),
     Pong(PongMessage),

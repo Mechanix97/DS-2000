@@ -101,10 +101,10 @@ impl Port {
             .await?;
         eprintln!("WRITE don");
         let timeout_duration = Duration::from_secs(1); // 5-second timeout
-    let msg = timeout(timeout_duration, self.read_message())
-        .await
-        .map_err(|_| SerialPortError::TimedOut)??; // Convert timeout error to your error type
-    
+        let msg = timeout(timeout_duration, self.read_message())
+            .await
+            .map_err(|_| SerialPortError::TimedOut)??; // Convert timeout error to your error type
+
         eprintln!("rad");
         match msg {
             SerialMessage::Pong(_) => {
@@ -141,63 +141,25 @@ impl Port {
 
     pub async fn read_message(&mut self) -> Result<SerialMessage, SerialPortError> {
         if let Some(port) = &mut self.port {
-            let mut buffer = [0u8, 30];
-            port.read(&mut buffer).await.map_err(|_| SerialPortError::ErrorReadingPort)?;
+            let mut buffer = [0; 256];
+            port.read(&mut buffer)
+                .await
+                .map_err(|_| SerialPortError::ErrorReadingPort)?;
+            eprintln!("{buffer:?}");
             match SerialMessage::decode(&buffer[..2]) {
-                Ok(msg ) =>  Ok(msg),
-                Err(_) => Err(SerialPortError::ErrorReadingPort) 
+                Ok(msg) => Ok(msg),
+                Err(_) => Err(SerialPortError::ErrorReadingPort),
             }
         } else {
-            Err(SerialPortError::PortNotConnected) 
+            Err(SerialPortError::PortNotConnected)
         }
-
-        // match &mut self.port {
-        //     Some(p) => {
-        //         let mut buf = Vec::new();
-        //         let timeout = Duration::from_millis(1000); // 1-second timeout
-        //         let start = Instant::now();
-
-        //         // Read one byte at a time until 0xFF or timeout
-        //         while start.elapsed() < timeout {
-        //             let mut byte = [0u8; 1];
-        //             match p.read(&mut byte).await {
-        //                 Ok(1) => {
-        //                     buf.push(byte[0]);
-        //                     eprintln!("Read byte: 0x{:02X}, buffer: {:?}", byte[0], buf);
-        //                     if byte[0] == 0xFF {
-        //                         break; // Stop reading when delimiter 0xFF is found
-        //                     }
-        //                 }
-        //                 Ok(n) => {
-        //                     info!("Unexpected read count: {}", n);
-        //                     return Err(SerialPortError::ErrorReadingPort);
-        //                 }
-        //                 Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-        //                     info!("Timeout while reading byte");
-        //                     continue;
-        //                 }
-        //                 Err(_) => return Err(SerialPortError::ErrorReadingPort),
-        //             }
-        //         }
-
-        //         if buf.is_empty() || buf[buf.len() - 1] != 0xFF {
-        //             info!("Failed to read complete message with 0xFF delimiter");
-        //             return Err(SerialPortError::ErrorReadingPort);
-        //         }
-
-        //         // Decode the buffer
-        //         let msg = SerialMessage::decode(&buf)
-        //             .map_err(|e| SerialPortError::ErrorDecodingMsg(e))?;
-        //         info!("Decoded message: {:?}", msg);
-        //         Ok(msg)
-        //     }
-        //     None => Err(SerialPortError::PortNotConnected),
-        // }
     }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::backend::serial::messages::pong::PongMessage;
+
     use super::*;
 
     #[tokio::test]
@@ -213,5 +175,24 @@ mod test {
         port.disconnect().unwrap();
     }
 
+    #[tokio::test]
+    pub async fn test_double_ping() {
+        let mut port = Port::new();
+        match port.auto_connect(115200, Duration::from_micros(1000)).await {
+            Err(e) => eprintln!("Error: {:?}", e),
+            Ok(_) => {}
+        }
 
+        assert!(port.is_connected());
+
+        port.send_message(&SerialMessage::Ping(PingMessage {}))
+            .await
+            .unwrap();
+
+        let pong = port.read_message().await.unwrap();
+
+        assert_eq!(pong, SerialMessage::Pong(PongMessage {}));
+
+        port.disconnect().unwrap();
+    }
 }

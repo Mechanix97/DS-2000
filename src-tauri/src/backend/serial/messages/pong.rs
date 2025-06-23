@@ -1,9 +1,9 @@
 use bytes::BufMut;
 
-use  crate::backend::serial::error::SerialMessageError;
+use crate::backend::serial::error::SerialMessageError;
 use crate::backend::serial::serial_message::RLPxMessage;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PongMessage {}
 
 impl RLPxMessage for PongMessage {
