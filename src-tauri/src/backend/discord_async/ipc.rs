@@ -38,7 +38,7 @@ impl IpcClient {
     }
 
     #[cfg(windows)]
-    pub fn connect(&mut self) -> Result<(), DiscordError> {
+    pub async fn connect(&mut self) -> Result<(), DiscordError> {
         let iter = 0..10;
         for i in iter {
             let pipe_name = format!(r"\\?\pipe\discord-ipc-{}", i);
@@ -52,7 +52,7 @@ impl IpcClient {
     }
 
     #[cfg(unix)]
-    pub fn connect(&mut self) -> Result<(), DiscordError> {
+    pub async fn connect(&mut self) -> Result<(), DiscordError> {
         let mut sub_path = None;
         for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
             if let Ok(env_var) = var(key) {
@@ -62,7 +62,7 @@ impl IpcClient {
         let sp = sub_path.ok_or(DiscordError::PipeConnectionFailed)?;
         for i in 0..10 {
             let pipe_name = format!("{}discord-ipc-{}", sp, i);
-            if let Ok(pipe) = UnixStream::connect(&pipe_name) {
+            if let Ok(pipe) = UnixStream::connect(&pipe_name).await {
                 self.pipe_client = Some(pipe);
                 return Ok(());
             }
@@ -347,7 +347,7 @@ mod tests {
         let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
         let redirect_uri = "https://www.mechardo3d.xyz/";
 
-        ipc_client.connect().unwrap();
+        ipc_client.connect().await.unwrap();
         assert!(ipc_client.pipe_client.is_some());
 
         ipc_client.handshake(client_id).await.unwrap();
