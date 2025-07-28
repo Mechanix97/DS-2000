@@ -9,6 +9,7 @@ discord.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+reqwest.workspace = true
 
 [lib]
 path = "./mod.rs"

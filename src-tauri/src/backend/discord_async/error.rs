@@ -38,9 +38,12 @@ pub enum DiscordError {
     #[error("Error closing the thread")]
     ErrorClosingThread,
 
-    #[error("Pipe read error: {0}")]
-    PipeReadError(#[from] std::io::Error),
+    #[error("Pipe IO error: {0}")]
+    PipeIOError(#[from] std::io::Error),
 
     #[error("Handshake not performed")]
     HandshakeNotDone,
+
+    #[error("Reqwest error: {0}")]
+    ReqwestError(#[from] reqwest::Error),
 }

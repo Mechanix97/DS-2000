@@ -1,3 +1,5 @@
+use serde_json::Value;
+use std::collections::HashMap;
 use tokio::io::AsyncReadExt;
 
 use tokio::io::AsyncWriteExt;
@@ -19,8 +21,9 @@ pub struct IpcClient {
     pub pipe_client: Option<NamedPipeClient>,
 
     pub client_id: Option<String>,
-    pub connected: bool,
+    pub handshake_done: bool,
     pub authorized: bool,
+    pub authenticated: bool,
 }
 
 impl IpcClient {
@@ -28,8 +31,9 @@ impl IpcClient {
         Self {
             pipe_client: None,
             client_id: None,
-            connected: false,
+            handshake_done: false,
             authorized: false,
+            authenticated: false,
         }
     }
 
@@ -90,7 +94,7 @@ impl IpcClient {
             return Err(DiscordError::HandshakeFailed);
         }
 
-        self.connected = true;
+        self.handshake_done = true;
         return Ok(());
     }
 
@@ -98,7 +102,7 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.connected {
+        if !self.handshake_done {
             return Err(DiscordError::HandshakeNotDone);
         }
         let Some(client_id) = &self.client_id else {
@@ -118,7 +122,76 @@ impl IpcClient {
             return Err(DiscordError::AuthorizationFailed);
         }
         self.authorized = true;
-        Ok(parsed_json["data"]["code"].to_string())
+        Ok(parsed_json["data"]["code"]
+            .to_string()
+            .trim_matches('"')
+            .to_owned())
+    }
+
+    pub async fn get_access_tokens(
+        &mut self,
+        code: &str,
+        client_secret: &str,
+        redirect_uri: &str,
+    ) -> Result<String, DiscordError> {
+        let Some(client_id) = &self.client_id else {
+            return Err(DiscordError::ClientIdNotFound);
+        };
+
+        let api_endpoint = "https://discord.com/api/v10/oauth2/token";
+        let cs = client_secret.to_string();
+        let ac = "authorization_code".to_string();
+        let c = code.to_string();
+        let ru = redirect_uri.to_string();
+        let mut data = HashMap::new();
+
+        data.insert("client_id", client_id);
+        data.insert("client_secret", &cs);
+        data.insert("grant_type", &ac);
+        data.insert("code", &c);
+        data.insert("redirect_uri", &ru);
+
+        let ds = reqwest::Client::new();
+        let res = ds
+            .post(api_endpoint)
+            .form(&data)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .send()
+            .await?;
+        let body = res.text().await?;
+
+        let response: Value = serde_json::from_str(&body)?;
+
+        Ok(response["access_token"]
+            .to_string()
+            .trim_matches('"')
+            .to_string())
+    }
+
+    pub async fn authenticate(&mut self, token: &str) -> Result<(), DiscordError> {
+        let Some(pipe_client) = &mut self.pipe_client else {
+            return Err(DiscordError::PipeNotConnected);
+        };
+        if !self.handshake_done {
+            return Err(DiscordError::HandshakeNotDone);
+        }
+        if !self.authorized {
+            return Err(DiscordError::AuthorizationFailed);
+        }
+
+        pipe_client
+            .write_all(&PipeMessage::authenticate(token).to_buff())
+            .await?;
+
+        let response = self.read_message().await?;
+        let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
+        let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
+        if !(parsed_json["evt"].is_null()) {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        self.authenticated = true;
+        Ok(())
     }
 }
 
@@ -154,16 +227,27 @@ mod tests {
         let mut ipc_client: IpcClient = IpcClient::new();
 
         let client_id = std::env::var("DISCORD_CLIENT_ID").unwrap();
+        let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
+        let redirect_uri = "https://www.mechardo3d.xyz/";
 
         ipc_client.connect().unwrap();
         assert!(ipc_client.pipe_client.is_some());
 
         ipc_client.handshake(client_id).await.unwrap();
 
-        assert!(ipc_client.connected);
+        assert!(ipc_client.handshake_done);
 
-        ipc_client.authorize().await.unwrap();
+        let code = ipc_client.authorize().await.unwrap();
 
         assert!(ipc_client.authorized);
+
+        let token = ipc_client
+            .get_access_tokens(&code, &client_secret, redirect_uri)
+            .await
+            .unwrap();
+
+        ipc_client.authenticate(&token).await.unwrap();
+
+        assert!(ipc_client.authenticated);
     }
 }
