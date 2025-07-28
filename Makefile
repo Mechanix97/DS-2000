@@ -8,7 +8,7 @@ deps:
 	@cargo install tauri-cli --version "^2.0.0" --locked
 	@cd src-tauri && cd frontend && npm install
 	
-build_installer_windows:
+build-installer-windows:
 	@cargo tauri bundle
 
 clean:
@@ -19,3 +19,6 @@ lint:
 
 test:
 	@cd src-tauri && cargo test -- --nocapture --test-threads=1
+
+test-discord:
+	@cd src-tauri && cargo test -p discord-async 

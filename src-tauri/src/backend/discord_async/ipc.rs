@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_basic_connect() {
+    async fn test_discord_connection() {
         load_env_file();
         let mut ipc_client: IpcClient = IpcClient::new();
 
