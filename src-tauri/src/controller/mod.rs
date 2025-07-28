@@ -62,10 +62,10 @@ impl Controller {
 }
 
 pub mod commands {
+    use super::Controller;
     use std::sync::{Arc, Mutex};
     use tauri::{AppHandle, State};
-
-    use super::Controller;
+    use tracing::info;
 
     #[tauri::command]
     pub fn ds_set_voice_settings_command(
@@ -73,6 +73,7 @@ pub mod commands {
         deaf: bool,
         controller: State<'_, Arc<Mutex<Controller>>>,
     ) {
+        info!("ds_set_voice_settings_command");
         controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
     }
 

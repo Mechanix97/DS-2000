@@ -1,13 +1,15 @@
-use controller::commands;
 use controller::Controller;
+use controller::commands;
 
 use std::sync::{Arc, Mutex};
+use tokio;
 use tracing::{debug, info};
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-fn main() {
-    let controller = Arc::new(Mutex::new(Controller::new()));
+#[tokio::main]
+async fn main() {
+    let controller = Arc::new(Mutex::new(Controller::new().await));
 
     tracing_subscriber::fmt().init();
 
