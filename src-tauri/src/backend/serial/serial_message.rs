@@ -1,10 +1,40 @@
-use bytes::BufMut;
+use bytes::{BufMut, BytesMut};
+use tokio_util::codec::{Decoder, Encoder};
 
-use super::error::SerialMessageError;
-use super::ping::PingMessage;
-use super::pong::PongMessage;
+use super::error::{SerialMessageError, SerialPortError};
+use super::messages::ping::PingMessage;
+use super::messages::pong::PongMessage;
 
-#[derive(Debug)]
+pub struct SerialMessageCodec;
+
+impl Decoder for SerialMessageCodec {
+    type Item = SerialMessage;
+    type Error = SerialPortError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, SerialPortError> {
+        if let Some(pos) = src.iter().position(|&b| b == 0xFF) {
+            let frame = src.split_to(pos + 1);
+
+            let data = &frame[..frame.len() - 1];
+            Ok(Some(SerialMessage::decode(data)?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl Encoder<SerialMessage> for SerialMessageCodec {
+    type Error = SerialPortError;
+
+    fn encode(&mut self, item: SerialMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        item.encode(dst)?;
+        dst.put_u8(0xFF);
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum SerialMessage {
     Ping(PingMessage),
     Pong(PongMessage),
@@ -19,6 +49,10 @@ impl SerialMessage {
     }
 
     pub fn decode(data: &[u8]) -> Result<SerialMessage, SerialMessageError> {
+        if data.is_empty() {
+            return Err(SerialMessageError::MalformedData);
+        }
+
         let msg_id = data[0];
         match msg_id {
             PingMessage::CODE => Ok(SerialMessage::Ping(PingMessage::decode(data)?)),
@@ -28,6 +62,7 @@ impl SerialMessage {
     }
 
     pub fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError> {
+        buf.put_u8(self.code());
         match self {
             SerialMessage::Ping(msg) => msg.encode(buf),
             SerialMessage::Pong(msg) => msg.encode(buf),

@@ -1,15 +1,15 @@
-mod backend;
-mod config;
-mod controller;
+use controller::Controller;
+use controller::commands;
 
-use controller::*;
 use std::sync::{Arc, Mutex};
+use tokio;
 use tracing::{debug, info};
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-fn main() {
-    let controller = Arc::new(Mutex::new(Controller::new()));
+#[tokio::main]
+async fn main() {
+    let controller = Arc::new(Mutex::new(Controller::new().await));
 
     tracing_subscriber::fmt().init();
 
@@ -20,8 +20,8 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(controller)
         .invoke_handler(tauri::generate_handler![
-            controller::controller_start,
-            controller::ds_set_voice_settings_command
+            commands::controller_start,
+            commands::ds_set_voice_settings_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

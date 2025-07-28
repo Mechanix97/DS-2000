@@ -1,0 +1,15 @@
+#[derive(Debug, Clone)]
+pub enum DiscordError {
+    PipeConnectionFailed,
+    PipeNotConnected,
+    PipeErrorReading,
+    PipeWriteError,
+    HandshakeFailed,
+    ClientIdNotFound,
+    SerdeConvertionError,
+    AuthorizationFailed,
+    AuthenticationFailed,
+    NoDataFound,
+    InternalChannelClosed,
+    ErrorClosingThread,
+}

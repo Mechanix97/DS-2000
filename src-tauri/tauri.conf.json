@@ -25,8 +25,12 @@
     }
   },
   "bundle": {
-    "icon": ["icons/icon.ico"],
-    "targets": ["msi"],    
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "targets": [
+      "msi"
+    ],
     "windows": {
       "wix": {
         "language": "es-ES"

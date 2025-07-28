@@ -1,8 +1,8 @@
-use crate::backend::discord::discord_worker::{DiscordUpdate, DiscordWorker};
-use crate::backend::serial::serial_worker::SerialWorker;
-use crate::config::*;
-use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use config::*;
+use discord::discord_worker::{DiscordUpdate, DiscordWorker};
+use serial::serial_worker::SerialWorker;
+use tauri::AppHandle;
+
 use tracing::info;
 
 pub struct Controller {
@@ -12,7 +12,7 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let mut discord_worker = DiscordWorker::new();
         let mut serial_worker = SerialWorker::new();
         let mut config = DSConfig::new();
@@ -21,6 +21,7 @@ impl Controller {
         discord_worker.start(config.clone()).unwrap();
         serial_worker
             .start(config.last_port_connected.clone())
+            .await
             .unwrap();
 
         Controller {
@@ -34,7 +35,7 @@ impl Controller {
         self.discord_worker.set_voice_settings(mute, deaf).unwrap();
     }
 
-    pub fn controller_loop(&mut self, app: &AppHandle) {
+    pub fn controller_loop(&mut self, _app: &AppHandle) {
         // app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
         if self.serial_worker.has_update() {}
@@ -60,19 +61,29 @@ impl Controller {
     }
 }
 
-#[tauri::command]
-pub fn ds_set_voice_settings_command(
-    mute: bool,
-    deaf: bool,
-    controller: State<'_, Arc<Mutex<Controller>>>,
-) {
-    controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
-}
+pub mod commands {
+    use super::Controller;
+    use std::sync::{Arc, Mutex};
+    use tauri::{AppHandle, State};
+    use tracing::info;
 
-#[tauri::command]
-pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
-    let conttoller_clone = controller.inner().clone();
-    std::thread::spawn(move || loop {
-        conttoller_clone.lock().unwrap().controller_loop(&app);
-    });
+    #[tauri::command]
+    pub fn ds_set_voice_settings_command(
+        mute: bool,
+        deaf: bool,
+        controller: State<'_, Arc<Mutex<Controller>>>,
+    ) {
+        info!("ds_set_voice_settings_command");
+        controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
+    }
+
+    #[tauri::command]
+    pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
+        let controller_clone = controller.inner().clone();
+        std::thread::spawn(move || {
+            loop {
+                controller_clone.lock().unwrap().controller_loop(&app);
+            }
+        });
+    }
 }

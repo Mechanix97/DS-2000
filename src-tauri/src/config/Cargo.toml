@@ -1,0 +1,15 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json.workspace = true
+aes-gcm.workspace = true
+hex.workspace = true
+rand.workspace = true
+serde.workspace = true
+directories.workspace = true
+
+[lib]
+path = "./mod.rs"

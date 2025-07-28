@@ -1,5 +1,5 @@
-use crate::backend::discord::error::*;
-use crate::backend::discord::ipc::*;
+use crate::error::*;
+use crate::ipc::*;
 
 #[derive(Debug)]
 pub enum DiscordStatus {

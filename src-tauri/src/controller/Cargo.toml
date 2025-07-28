@@ -1,0 +1,17 @@
+[package]
+name = "controller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serial.workspace = true
+config.workspace = true
+discord.workspace = true
+
+tracing.workspace = true
+tauri.workspace = true
+tauri-plugin-shell.workspace = true
+
+
+[lib]
+path = "./mod.rs"

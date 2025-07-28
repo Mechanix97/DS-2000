@@ -3,9 +3,9 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::backend::discord::client::*;
-use crate::backend::discord::error::*;
-use crate::config::DSConfig;
+use crate::client::*;
+use crate::error::*;
+use config::DSConfig;
 
 const REDIRECT_URI: &str = "https://www.mechardo3d.xyz/";
 
