@@ -7,7 +7,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 
 #[cfg(unix)]
-use std::{env::var, os::unix::net::UnixStream};
+use {std::env::var, tokio::net::UnixStream};
 
 use crate::error::DiscordError;
 use discord::pipemessage::Opcode;
