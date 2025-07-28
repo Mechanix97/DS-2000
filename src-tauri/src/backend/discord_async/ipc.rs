@@ -8,7 +8,6 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use std::{env::var, os::unix::net::UnixStream};
 
 use crate::error::DiscordError;
-
 use discord::pipemessage::Opcode;
 use discord::pipemessage::PipeMessage;
 
@@ -21,6 +20,7 @@ pub struct IpcClient {
 
     pub client_id: Option<String>,
     pub connected: bool,
+    pub authorized: bool,
 }
 
 impl IpcClient {
@@ -29,6 +29,7 @@ impl IpcClient {
             pipe_client: None,
             client_id: None,
             connected: false,
+            authorized: false,
         }
     }
 
@@ -63,9 +64,10 @@ impl IpcClient {
 
         received_length = u32::from_le_bytes(buf);
 
-        let response_data = vec![0u8; received_length as usize];
+        let mut response_data = vec![0u8; received_length as usize];
+        pipe_client.read_exact(&mut response_data).await?;
 
-        let response_data_str = String::from_utf8_lossy(&response_data);
+        let response_data_str = String::from_utf8_lossy(&response_data).into_owned();
 
         return Ok(PipeMessage::new(
             Opcode::new(received_opcode),
@@ -91,6 +93,33 @@ impl IpcClient {
         self.connected = true;
         return Ok(());
     }
+
+    pub async fn authorize(&mut self) -> Result<String, DiscordError> {
+        let Some(pipe_client) = &mut self.pipe_client else {
+            return Err(DiscordError::PipeNotConnected);
+        };
+        if !self.connected {
+            return Err(DiscordError::HandshakeNotDone);
+        }
+        let Some(client_id) = &self.client_id else {
+            return Err(DiscordError::ClientIdNotFound);
+        };
+
+        pipe_client
+            .write_all(&PipeMessage::authorize(&client_id, "rpc").to_buff())
+            .await?;
+
+        //receive reply
+        let m = self.read_message().await?;
+        let payload = m.payload.ok_or(DiscordError::AuthorizationFailed)?;
+        let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
+
+        if !(parsed_json["evt"].is_null()) {
+            return Err(DiscordError::AuthorizationFailed);
+        }
+        self.authorized = true;
+        Ok(parsed_json["data"]["code"].to_string())
+    }
 }
 
 // for running these tests, discord should be running on the background
@@ -110,7 +139,6 @@ mod tests {
         for line in reader.lines() {
             let line = line.unwrap();
             if line.starts_with("#") {
-                // Skip comments
                 continue;
             };
             match line.split_once('=') {
@@ -133,5 +161,9 @@ mod tests {
         ipc_client.handshake(client_id).await.unwrap();
 
         assert!(ipc_client.connected);
+
+        ipc_client.authorize().await.unwrap();
+
+        assert!(ipc_client.authorized);
     }
 }

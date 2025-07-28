@@ -20,8 +20,8 @@ pub enum DiscordError {
     #[error("Client ID not found")]
     ClientIdNotFound,
 
-    #[error("Failed to convert data with Serde")]
-    SerdeConvertionError,
+    #[error("Failed to convert data with Serde: {0}")]
+    SerdeConvertionError(#[from] serde_json::Error),
 
     #[error("Authorization with Discord failed")]
     AuthorizationFailed,
@@ -40,4 +40,7 @@ pub enum DiscordError {
 
     #[error("Pipe read error: {0}")]
     PipeReadError(#[from] std::io::Error),
+
+    #[error("Handshake not performed")]
+    HandshakeNotDone,
 }
