@@ -51,6 +51,26 @@ impl IpcClient {
         return Err(DiscordError::PipeConnectionFailed);
     }
 
+    #[cfg(unix)]
+    pub fn connect(&mut self) -> Result<(), DiscordError> {
+        let mut sub_path = None;
+        for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
+            if let Ok(env_var) = var(key) {
+                sub_path = Some(env_var);
+            }
+        }
+        let sp = sub_path.ok_or(DiscordError::PipeConnectionFailed)?;
+        for i in 0..10 {
+            let pipe_name = format!("{}discord-ipc-{}", sp, i);
+            if let Ok(pipe) = UnixStream::connect(&pipe_name) {
+                self.pipe_client = Some(pipe);
+                return Ok(());
+            }
+        }
+
+        Err(DiscordError::PipeConnectionFailed)
+    }
+
     pub async fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
         let mut buf = [0u8; 4];
         let received_opcode: u32;
@@ -193,6 +213,103 @@ impl IpcClient {
         self.authenticated = true;
         Ok(())
     }
+
+    pub async fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError> {
+        let Some(pipe_client) = &mut self.pipe_client else {
+            return Err(DiscordError::PipeNotConnected);
+        };
+        if !self.handshake_done {
+            return Err(DiscordError::HandshakeNotDone);
+        }
+        if !self.authorized {
+            return Err(DiscordError::AuthorizationFailed);
+        }
+        if !self.authenticated {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        pipe_client
+            .write_all(&PipeMessage::get_voice_settings().to_buff())
+            .await?;
+
+        let response = self.read_message().await?;
+        let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
+        let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
+        if !(parsed_json["evt"].is_null()) {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        if parsed_json["data"]["mute"].is_null() || parsed_json["data"]["deaf"].is_null() {
+            return Err(DiscordError::NoDataFound);
+        }
+
+        let muted = parsed_json["data"]["mute"].as_bool().unwrap();
+        let deafen = parsed_json["data"]["deaf"].as_bool().unwrap();
+        Ok((muted, deafen))
+    }
+
+    pub async fn set_voice_settings(
+        &mut self,
+        muted: bool,
+        deafed: bool,
+    ) -> Result<(), DiscordError> {
+        let Some(pipe_client) = &mut self.pipe_client else {
+            return Err(DiscordError::PipeNotConnected);
+        };
+        if !self.handshake_done {
+            return Err(DiscordError::HandshakeNotDone);
+        }
+        if !self.authorized {
+            return Err(DiscordError::AuthorizationFailed);
+        }
+        if !self.authenticated {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        pipe_client
+            .write_all(&PipeMessage::set_voice_settings(muted, deafed).to_buff())
+            .await?;
+
+        let response = self.read_message().await?;
+        let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
+        let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
+        if !(parsed_json["evt"].is_null()) {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        Ok(())
+    }
+
+    pub async fn select_voice_channel(
+        &mut self,
+        channel_id: Option<String>,
+    ) -> Result<(), DiscordError> {
+        let Some(pipe_client) = &mut self.pipe_client else {
+            return Err(DiscordError::PipeNotConnected);
+        };
+        if !self.handshake_done {
+            return Err(DiscordError::HandshakeNotDone);
+        }
+        if !self.authorized {
+            return Err(DiscordError::AuthorizationFailed);
+        }
+        if !self.authenticated {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        pipe_client
+            .write_all(&PipeMessage::select_voice_channel(channel_id).to_buff())
+            .await?;
+
+        let response = self.read_message().await?;
+        let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
+        let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
+        if !(parsed_json["evt"].is_null()) {
+            return Err(DiscordError::AuthenticationFailed);
+        }
+
+        Ok(())
+    }
 }
 
 // for running these tests, discord should be running on the background
@@ -249,5 +366,19 @@ mod tests {
         ipc_client.authenticate(&token).await.unwrap();
 
         assert!(ipc_client.authenticated);
+
+        ipc_client.set_voice_settings(true, false).await.unwrap();
+
+        let (muted, deafen) = ipc_client.get_voice_settings().await.unwrap();
+
+        assert!(muted);
+        assert!(!deafen);
+
+        ipc_client.set_voice_settings(true, true).await.unwrap();
+
+        let (muted, deafen) = ipc_client.get_voice_settings().await.unwrap();
+
+        assert!(muted);
+        assert!(deafen);
     }
 }
