@@ -1,1 +1,1 @@
-{"desktop-capability":{"identifier":"desktop-capability","description":"","local":true,"windows":["*"],"permissions":["shell:default","shell:allow-execute","shell:allow-open","core:event:default","core:event:allow-listen"],"platforms":["linux","macOS","windows"]}}
+{"default":{"identifier":"default","description":"Default capabilities for DS-2000","local":true,"windows":["*"],"permissions":["core:default","core:event:default","core:event:allow-listen"],"platforms":["linux","macOS","windows"]}}

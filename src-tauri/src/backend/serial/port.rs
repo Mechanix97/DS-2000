@@ -1,17 +1,16 @@
-use crate::backend::serial::error::*;
-use crate::backend::serial::serial_message::SerialMessageCodec;
-use serial2_tokio::SerialPort;
-use std::path::PathBuf;
-use tokio::time::{timeout, Duration};
-use tracing::info;
-
+use super::error::SerialPortError;
 use super::messages::ping::PingMessage;
 use super::serial_message::SerialMessage;
+use super::serial_message::SerialMessageCodec;
 
 use futures_util::{SinkExt, StreamExt};
+use serial2_tokio::SerialPort;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::{Duration, timeout};
 use tokio_util::codec::Framed;
+use tracing::info;
 
 pub struct Port {
     name: Option<String>,
@@ -157,9 +156,8 @@ impl Port {
 
 #[cfg(test)]
 mod test {
-    use crate::backend::serial::messages::pong::PongMessage;
-
     use super::*;
+    use crate::messages::pong::PongMessage;
 
     #[tokio::test]
     pub async fn test_auto_connect() {

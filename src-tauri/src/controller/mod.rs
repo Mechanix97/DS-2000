@@ -1,8 +1,8 @@
-use crate::backend::discord::discord_worker::{DiscordUpdate, DiscordWorker};
-use crate::backend::serial::serial_worker::SerialWorker;
-use crate::config::*;
-use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use config::*;
+use discord::discord_worker::{DiscordUpdate, DiscordWorker};
+use serial::serial_worker::SerialWorker;
+use tauri::AppHandle;
+
 use tracing::info;
 
 pub struct Controller {
@@ -35,7 +35,7 @@ impl Controller {
         self.discord_worker.set_voice_settings(mute, deaf).unwrap();
     }
 
-    pub fn controller_loop(&mut self, app: &AppHandle) {
+    pub fn controller_loop(&mut self, _app: &AppHandle) {
         // app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
         if self.serial_worker.has_update() {}
@@ -61,19 +61,28 @@ impl Controller {
     }
 }
 
-#[tauri::command]
-pub fn ds_set_voice_settings_command(
-    mute: bool,
-    deaf: bool,
-    controller: State<'_, Arc<Mutex<Controller>>>,
-) {
-    controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
-}
+pub mod commands {
+    use std::sync::{Arc, Mutex};
+    use tauri::{AppHandle, State};
 
-#[tauri::command]
-pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
-    let conttoller_clone = controller.inner().clone();
-    std::thread::spawn(move || loop {
-        conttoller_clone.lock().unwrap().controller_loop(&app);
-    });
+    use super::Controller;
+
+    #[tauri::command]
+    pub fn ds_set_voice_settings_command(
+        mute: bool,
+        deaf: bool,
+        controller: State<'_, Arc<Mutex<Controller>>>,
+    ) {
+        controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
+    }
+
+    #[tauri::command]
+    pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
+        let controller_clone = controller.inner().clone();
+        std::thread::spawn(move || {
+            loop {
+                controller_clone.lock().unwrap().controller_loop(&app);
+            }
+        });
+    }
 }

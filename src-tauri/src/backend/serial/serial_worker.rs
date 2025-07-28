@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::info;
 
-use crate::backend::serial::error::*;
-use crate::backend::serial::port::*;
+use super::error::SerialPortError;
+use super::port::Port;
 
 use super::serial_message::SerialMessage;
 

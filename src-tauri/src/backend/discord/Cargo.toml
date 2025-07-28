@@ -1,0 +1,18 @@
+[package]
+name = "discord"
+version = "0.1.0"
+edition = "2024"
+
+
+[dependencies]
+config.workspace = true
+
+rand.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+named_pipe = "0.4"
+
+[lib]
+path = "./mod.rs"

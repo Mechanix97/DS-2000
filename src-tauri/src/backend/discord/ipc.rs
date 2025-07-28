@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 #[cfg(unix)]
 use std::{env::var, os::unix::net::UnixStream};
 
-use crate::backend::discord::error::*;
-use crate::backend::discord::pipemessage::*;
+use crate::error::*;
+use crate::pipemessage::*;
 
 pub struct IPCClient {
     #[cfg(unix)]

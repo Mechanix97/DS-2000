@@ -1,0 +1,15 @@
+[package]
+name = "serial"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
+serial2-tokio.workspace = true
+futures-util.workspace = true
+tracing.workspace = true
+bytes.workspace = true
+
+[lib]
+path = "./mod.rs"
