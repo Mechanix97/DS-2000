@@ -4,4 +4,5 @@ Cargo.lock
 /secrets
 */node_modules/
 /src-tauri/target
+/src-tauri/gen
 discord.env

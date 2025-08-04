@@ -10,8 +10,8 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use {std::env::var, tokio::net::UnixStream};
 
 use crate::error::DiscordError;
-use discord::pipemessage::Opcode;
-use discord::pipemessage::PipeMessage;
+use crate::pipe_message::Opcode;
+use crate::pipe_message::PipeMessage;
 
 pub struct IpcClient {
     #[cfg(unix)]
