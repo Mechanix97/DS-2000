@@ -1,19 +1,20 @@
 use crate::error::DiscordError;
 use crate::ipc::{DiscordConnectionState, IpcClient};
-
 use spawned_concurrency::tasks::{
     CallResponse, CastResponse, GenServer, GenServerHandle, send_after,
 };
-use std::time::Duration;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::time::Duration;
 use tracing::debug;
 
 const DISCORD_FETCH_INTERVAL: u64 = 100;
 
-type DiscordStateHandler = GenServerHandle<DiscordState>;
+pub type DiscordStateHandler = GenServerHandle<DiscordState>;
 
 #[derive(Clone)]
 pub enum InCallMessage {
-    Status,
+    DiscordStatus,
 }
 
 #[derive(Clone)]
@@ -25,24 +26,37 @@ pub enum InMessage {
 #[derive(Clone, PartialEq)]
 pub enum OutMessage {
     Done,
-    Connected,
-    NotConnected,
+    DiscordStatus(DiscordConnectionState),
+}
+
+#[derive(Clone)]
+pub struct DiscordVoiceSettings {
+    pub mute: bool,
+    pub deafen: bool,
 }
 
 #[derive(Clone)]
 pub struct DiscordState {
-    fetch_interval_ms: u64,
-    ipc_client: IpcClient,
-    client_id: String,
-    client_secret: String,
-    redirect_url: String,
-    code: Option<String>,
-    access_token: Option<String>,
-    refresh_token: Option<String>,
+    pub fetch_interval_ms: u64,
+    pub ipc_client: IpcClient,
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_url: String,
+    pub code: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
 }
 
 impl DiscordState {
-    pub fn new(client_id: String, client_secret: String, redirect_url: String) -> Self {
+    pub fn new(
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+        access_token: Option<String>,
+        refresh_token: Option<String>,
+        voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
+    ) -> Self {
         Self {
             fetch_interval_ms: DISCORD_FETCH_INTERVAL,
             ipc_client: IpcClient::new(),
@@ -50,8 +64,9 @@ impl DiscordState {
             client_secret,
             redirect_url,
             code: None,
-            access_token: None,
-            refresh_token: None,
+            access_token,
+            refresh_token,
+            voice_setting,
         }
     }
 
@@ -59,8 +74,18 @@ impl DiscordState {
         client_id: String,
         client_secret: String,
         redirect_url: String,
+        access_token: Option<String>,
+        refresh_token: Option<String>,
+        voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
     ) -> DiscordStateHandler {
-        let state = Self::new(client_id, client_secret, redirect_url);
+        let state = Self::new(
+            client_id,
+            client_secret,
+            redirect_url,
+            access_token,
+            refresh_token,
+            voice_setting,
+        );
         state.start()
     }
 }
@@ -181,8 +206,10 @@ impl GenServer for DiscordState {
                     }
                     DiscordConnectionState::Authenticated => {
                         match self.ipc_client.get_voice_settings().await {
-                            Ok((muted, deafen)) => {
-                                debug!("muted: {muted}    deafen: {deafen}");
+                            Ok((mute, deafen)) => {
+                                debug!("mute: {mute}    deafen: {deafen}");
+                                let mut lock = self.voice_setting.lock().await;
+                                *lock = DiscordVoiceSettings { mute, deafen };
                             }
                             Err(err) => {
                                 debug!("Error during discord authentication: {err}");
@@ -215,11 +242,9 @@ impl GenServer for DiscordState {
         _handle: &GenServerHandle<Self>,
     ) -> CallResponse<Self> {
         match message {
-            Self::CallMsg::Status => {
-                if self.ipc_client.state == DiscordConnectionState::Authenticated {
-                    return CallResponse::Reply(self, OutMessage::Connected);
-                }
-                CallResponse::Reply(self, OutMessage::NotConnected)
+            Self::CallMsg::DiscordStatus => {
+                let st = self.ipc_client.state.clone();
+                CallResponse::Reply(self, OutMessage::DiscordStatus(st))
             }
         }
     }
@@ -228,8 +253,10 @@ impl GenServer for DiscordState {
 // for running these tests, discord should be running on the background
 #[cfg(test)]
 mod tests {
+    use crate::discord_state::DiscordVoiceSettings;
     use crate::discord_state::InCallMessage;
     use crate::discord_state::OutMessage;
+    use crate::ipc::DiscordConnectionState;
 
     use super::DiscordState;
     use super::DiscordStateHandler;
@@ -237,9 +264,10 @@ mod tests {
 
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use tokio::time::{Duration, sleep};
-
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio::time::{Duration, sleep};
 
     fn load_env_file() {
         let env_file_path = PathBuf::from("../../../../discord.env");
@@ -266,11 +294,23 @@ mod tests {
         let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
         let redirect_url = "https://www.mechardo3d.xyz/".to_string();
 
-        let mut dw: DiscordStateHandler =
-            DiscordState::spawn(client_id, client_secret, redirect_url).await;
+        let mut dw: DiscordStateHandler = DiscordState::spawn(
+            client_id,
+            client_secret,
+            redirect_url,
+            None,
+            None,
+            Arc::new(Mutex::new(DiscordVoiceSettings {
+                mute: false,
+                deafen: false,
+            })),
+        )
+        .await;
         dw.cast(InMessage::Fetch).await.unwrap();
 
-        while dw.call(InCallMessage::Status).await.unwrap() != OutMessage::Connected {}
+        while dw.call(InCallMessage::DiscordStatus).await.unwrap()
+            != OutMessage::DiscordStatus(DiscordConnectionState::Authenticated)
+        {}
 
         dw.cast(InMessage::SetVoiceSetting(true, true))
             .await
