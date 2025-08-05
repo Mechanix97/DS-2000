@@ -1,4 +1,5 @@
 use crate::error::DiscordError;
+use crate::ipc::IpcClient;
 
 use spawned_concurrency::{
     messages::Unused,
@@ -29,12 +30,14 @@ pub enum OutMessage {
 #[derive(Clone)]
 pub struct DiscordWorker {
     fetch_interval_ms: u64,
+    ipc_client: IpcClient,
 }
 
 impl DiscordWorker {
     pub fn new() -> Self {
         Self {
             fetch_interval_ms: DISCORD_FETCH_INTERVAL,
+            ipc_client: IpcClient::new(),
         }
     }
 
@@ -51,12 +54,12 @@ impl GenServer for DiscordWorker {
     type Error = DiscordError;
 
     async fn handle_cast(
-        mut self,
+        self,
         message: Self::CastMsg,
         handle: &GenServerHandle<Self>,
     ) -> CastResponse<Self> {
         match message {
-            InMessage::Fetch => {
+            Self::CastMsg::Fetch => {
                 eprintln!("HOLA");
                 send_after(
                     Duration::from_millis(self.fetch_interval_ms),

@@ -1,6 +1,9 @@
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
+#[cfg(windows)]
+use tokio::sync::Mutex;
 
 use tokio::io::AsyncWriteExt;
 #[cfg(windows)]
@@ -13,12 +16,13 @@ use crate::error::DiscordError;
 use crate::pipe_message::Opcode;
 use crate::pipe_message::PipeMessage;
 
+#[derive(Clone)]
 pub struct IpcClient {
     #[cfg(unix)]
-    pub pipe_client: Option<UnixStream>,
+    pub pipe_client: Option<Arc<Mutex<UnixStream>>>,
 
     #[cfg(windows)]
-    pub pipe_client: Option<NamedPipeClient>,
+    pub pipe_client: Option<Arc<Mutex<NamedPipeClient>>>,
 
     pub client_id: Option<String>,
     pub handshake_done: bool,
@@ -43,7 +47,7 @@ impl IpcClient {
         for i in iter {
             let pipe_name = format!(r"\\?\pipe\discord-ipc-{}", i);
             if let Ok(pipe) = ClientOptions::new().open(pipe_name) {
-                self.pipe_client = Some(pipe);
+                self.pipe_client = Some(Arc::new(Mutex::new(pipe)));
                 return Ok(());
             }
         }
@@ -72,31 +76,13 @@ impl IpcClient {
     }
 
     pub async fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
-        let mut buf = [0u8; 4];
-        let received_opcode: u32;
-        let received_length: u32;
-
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
 
-        pipe_client.read_exact(&mut buf).await?;
+        let pipe_lock: tokio::sync::MutexGuard<'_, NamedPipeClient> = pipe_client.lock().await;
 
-        received_opcode = u32::from_le_bytes(buf);
-
-        pipe_client.read_exact(&mut buf).await?;
-
-        received_length = u32::from_le_bytes(buf);
-
-        let mut response_data = vec![0u8; received_length as usize];
-        pipe_client.read_exact(&mut response_data).await?;
-
-        let response_data_str = String::from_utf8_lossy(&response_data).into_owned();
-
-        return Ok(PipeMessage::new(
-            Opcode::new(received_opcode),
-            &response_data_str,
-        ));
+        read_message_from_lock(pipe_lock).await
     }
 
     pub async fn handshake(&mut self, client_id: String) -> Result<(), DiscordError> {
@@ -106,11 +92,13 @@ impl IpcClient {
         //store client id
         self.client_id = Some(client_id.clone());
 
-        pipe_client
+        let mut pipe_lock = pipe_client.lock().await;
+
+        pipe_lock
             .write_all(&PipeMessage::handshake(&client_id).to_buff())
             .await?;
 
-        if self.read_message().await?.opcode != Opcode::Frame {
+        if read_message_from_lock(pipe_lock).await?.opcode != Opcode::Frame {
             return Err(DiscordError::HandshakeFailed);
         }
 
@@ -128,13 +116,14 @@ impl IpcClient {
         let Some(client_id) = &self.client_id else {
             return Err(DiscordError::ClientIdNotFound);
         };
+        let mut pipe_lock = pipe_client.lock().await;
 
-        pipe_client
+        pipe_lock
             .write_all(&PipeMessage::authorize(&client_id, "rpc").to_buff())
             .await?;
 
         //receive reply
-        let m = self.read_message().await?;
+        let m = read_message_from_lock(pipe_lock).await?;
         let payload = m.payload.ok_or(DiscordError::AuthorizationFailed)?;
         let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
 
@@ -198,12 +187,13 @@ impl IpcClient {
         if !self.authorized {
             return Err(DiscordError::AuthorizationFailed);
         }
+        let mut pipe_lock = pipe_client.lock().await;
 
-        pipe_client
+        pipe_lock
             .write_all(&PipeMessage::authenticate(token).to_buff())
             .await?;
 
-        let response = self.read_message().await?;
+        let response = read_message_from_lock(pipe_lock).await?;
         let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
         let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
         if !(parsed_json["evt"].is_null()) {
@@ -228,11 +218,13 @@ impl IpcClient {
             return Err(DiscordError::AuthenticationFailed);
         }
 
-        pipe_client
+        let mut pipe_lock = pipe_client.lock().await;
+
+        pipe_lock
             .write_all(&PipeMessage::get_voice_settings().to_buff())
             .await?;
 
-        let response = self.read_message().await?;
+        let response = read_message_from_lock(pipe_lock).await?;
         let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
         let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
         if !(parsed_json["evt"].is_null()) {
@@ -266,11 +258,13 @@ impl IpcClient {
             return Err(DiscordError::AuthenticationFailed);
         }
 
-        pipe_client
+        let mut pipe_lock = pipe_client.lock().await;
+
+        pipe_lock
             .write_all(&PipeMessage::set_voice_settings(muted, deafed).to_buff())
             .await?;
 
-        let response = self.read_message().await?;
+        let response = read_message_from_lock(pipe_lock).await?;
         let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
         let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
         if !(parsed_json["evt"].is_null()) {
@@ -296,12 +290,13 @@ impl IpcClient {
         if !self.authenticated {
             return Err(DiscordError::AuthenticationFailed);
         }
+        let mut pipe_lock = pipe_client.lock().await;
 
-        pipe_client
+        pipe_lock
             .write_all(&PipeMessage::select_voice_channel(channel_id).to_buff())
             .await?;
 
-        let response = self.read_message().await?;
+        let response = read_message_from_lock(pipe_lock).await?;
         let payload = response.payload.ok_or(DiscordError::AuthenticationFailed)?;
         let parsed_json: serde_json::Value = serde_json::from_str(&payload)?;
         if !(parsed_json["evt"].is_null()) {
@@ -310,6 +305,31 @@ impl IpcClient {
 
         Ok(())
     }
+}
+pub async fn read_message_from_lock(
+    mut pipe_lock: tokio::sync::MutexGuard<'_, NamedPipeClient>,
+) -> Result<PipeMessage, DiscordError> {
+    let mut buf = [0u8; 4];
+    let received_opcode: u32;
+    let received_length: u32;
+
+    pipe_lock.read_exact(&mut buf).await?;
+
+    received_opcode = u32::from_le_bytes(buf);
+
+    pipe_lock.read_exact(&mut buf).await?;
+
+    received_length = u32::from_le_bytes(buf);
+
+    let mut response_data = vec![0u8; received_length as usize];
+    pipe_lock.read_exact(&mut response_data).await?;
+
+    let response_data_str = String::from_utf8_lossy(&response_data).into_owned();
+
+    return Ok(PipeMessage::new(
+        Opcode::new(received_opcode),
+        &response_data_str,
+    ));
 }
 
 // for running these tests, discord should be running on the background
