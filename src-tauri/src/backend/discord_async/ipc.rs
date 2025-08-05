@@ -160,7 +160,7 @@ impl IpcClient {
         code: &str,
         client_secret: &str,
         redirect_url: &str,
-    ) -> Result<String, DiscordError> {
+    ) -> Result<(String, String), DiscordError> {
         let Some(client_id) = &self.client_id else {
             return Err(DiscordError::ClientIdNotFound);
         };
@@ -189,17 +189,71 @@ impl IpcClient {
 
         let response: Value = serde_json::from_str(&body)?;
 
-        Ok(response["access_token"]
-            .to_string()
-            .trim_matches('"')
-            .to_string())
+        Ok((
+            response["access_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+            response["refresh_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+        ))
+    }
+
+    pub async fn refresh_access_token(
+        &mut self,
+        refresh_token: &str,
+        client_secret: &str,
+        redirect_url: &str,
+    ) -> Result<(String, String), DiscordError> {
+        let Some(client_id) = &self.client_id else {
+            return Err(DiscordError::ClientIdNotFound);
+        };
+
+        let api_endpoint = "https://discord.com/api/v10/oauth2/token";
+        let cs = client_secret.to_string();
+        let gt = "refresh_token".to_string();
+        let rt = refresh_token.to_string();
+        let ru = redirect_url.to_string();
+        let mut data = HashMap::new();
+
+        data.insert("client_id", client_id);
+        data.insert("client_secret", &cs);
+        data.insert("grant_type", &gt);
+        data.insert("refresh_token", &rt);
+        data.insert("redirect_uri", &ru);
+
+        let ds = reqwest::Client::new();
+        let res = ds
+            .post(api_endpoint)
+            .form(&data)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .send()
+            .await?;
+        let body = res.text().await?;
+
+        let response: Value = serde_json::from_str(&body)?;
+
+        Ok((
+            response["access_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+            response["refresh_token"]
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+        ))
     }
 
     pub async fn authenticate(&mut self, token: &str) -> Result<(), DiscordError> {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if self.state != DiscordConnectionState::Authorized {
+        if self.state != DiscordConnectionState::Authorized
+            && self.state != DiscordConnectionState::HandshakeDone
+        {
             return Err(DiscordError::AuthorizationFailed);
         }
         let mut pipe_lock = pipe_client.lock().await;
@@ -380,7 +434,7 @@ mod tests {
 
         assert_eq!(ipc_client.state, DiscordConnectionState::Authorized);
 
-        let token = ipc_client
+        let (token, _rt) = ipc_client
             .get_access_tokens(&code, &client_secret, redirect_uri)
             .await
             .unwrap();
