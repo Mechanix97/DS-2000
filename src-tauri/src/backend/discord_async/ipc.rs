@@ -16,6 +16,15 @@ use crate::error::DiscordError;
 use crate::pipe_message::Opcode;
 use crate::pipe_message::PipeMessage;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum DiscordConnectionState {
+    NotConnected,
+    Connected,
+    HandshakeDone,
+    Authorized,
+    Authenticated,
+}
+
 #[derive(Clone)]
 pub struct IpcClient {
     #[cfg(unix)]
@@ -25,9 +34,7 @@ pub struct IpcClient {
     pub pipe_client: Option<Arc<Mutex<NamedPipeClient>>>,
 
     pub client_id: Option<String>,
-    pub handshake_done: bool,
-    pub authorized: bool,
-    pub authenticated: bool,
+    pub state: DiscordConnectionState,
 }
 
 impl IpcClient {
@@ -35,19 +42,21 @@ impl IpcClient {
         Self {
             pipe_client: None,
             client_id: None,
-            handshake_done: false,
-            authorized: false,
-            authenticated: false,
+            state: DiscordConnectionState::NotConnected,
         }
     }
 
     #[cfg(windows)]
     pub async fn connect(&mut self) -> Result<(), DiscordError> {
+        if self.pipe_client.is_some() || self.state != DiscordConnectionState::NotConnected {
+            return Err(DiscordError::ClientAlreadyConnected);
+        }
         let iter = 0..10;
         for i in iter {
             let pipe_name = format!(r"\\?\pipe\discord-ipc-{}", i);
             if let Ok(pipe) = ClientOptions::new().open(pipe_name) {
                 self.pipe_client = Some(Arc::new(Mutex::new(pipe)));
+                self.state = DiscordConnectionState::Connected;
                 return Ok(());
             }
         }
@@ -57,6 +66,9 @@ impl IpcClient {
 
     #[cfg(unix)]
     pub async fn connect(&mut self) -> Result<(), DiscordError> {
+        if self.pipe_client.is_some() || self.state != DiscordConnectionState::NotConnected {
+            return Err(DiscordError::ClientAlreadyConnected);
+        }
         let mut sub_path = None;
         for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
             if let Ok(env_var) = var(key) {
@@ -67,12 +79,18 @@ impl IpcClient {
         for i in 0..10 {
             let pipe_name = format!("{}discord-ipc-{}", sp, i);
             if let Ok(pipe) = UnixStream::connect(&pipe_name).await {
-                self.pipe_client = Some(pipe);
+                self.pipe_client = Some(Arc::new(Mutex::new(pipe)));
+                self.state = DiscordConnectionState::Connected;
                 return Ok(());
             }
         }
 
         Err(DiscordError::PipeConnectionFailed)
+    }
+
+    pub async fn disconnect(&mut self) {
+        self.pipe_client = None;
+        self.state = DiscordConnectionState::NotConnected;
     }
 
     pub async fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
@@ -85,24 +103,24 @@ impl IpcClient {
         read_message_from_lock(pipe_lock).await
     }
 
-    pub async fn handshake(&mut self, client_id: String) -> Result<(), DiscordError> {
+    pub async fn handshake(&mut self, client_id: &str) -> Result<(), DiscordError> {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
         //store client id
-        self.client_id = Some(client_id.clone());
+        self.client_id = Some(client_id.to_string());
 
         let mut pipe_lock = pipe_client.lock().await;
 
         pipe_lock
-            .write_all(&PipeMessage::handshake(&client_id).to_buff())
+            .write_all(&PipeMessage::handshake(client_id).to_buff())
             .await?;
 
         if read_message_from_lock(pipe_lock).await?.opcode != Opcode::Frame {
             return Err(DiscordError::HandshakeFailed);
         }
 
-        self.handshake_done = true;
+        self.state = DiscordConnectionState::HandshakeDone;
         return Ok(());
     }
 
@@ -110,7 +128,7 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.handshake_done {
+        if self.state != DiscordConnectionState::HandshakeDone {
             return Err(DiscordError::HandshakeNotDone);
         }
         let Some(client_id) = &self.client_id else {
@@ -130,7 +148,7 @@ impl IpcClient {
         if !(parsed_json["evt"].is_null()) {
             return Err(DiscordError::AuthorizationFailed);
         }
-        self.authorized = true;
+        self.state = DiscordConnectionState::Authorized;
         Ok(parsed_json["data"]["code"]
             .to_string()
             .trim_matches('"')
@@ -141,7 +159,7 @@ impl IpcClient {
         &mut self,
         code: &str,
         client_secret: &str,
-        redirect_uri: &str,
+        redirect_url: &str,
     ) -> Result<String, DiscordError> {
         let Some(client_id) = &self.client_id else {
             return Err(DiscordError::ClientIdNotFound);
@@ -151,7 +169,7 @@ impl IpcClient {
         let cs = client_secret.to_string();
         let ac = "authorization_code".to_string();
         let c = code.to_string();
-        let ru = redirect_uri.to_string();
+        let ru = redirect_url.to_string();
         let mut data = HashMap::new();
 
         data.insert("client_id", client_id);
@@ -181,10 +199,7 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.handshake_done {
-            return Err(DiscordError::HandshakeNotDone);
-        }
-        if !self.authorized {
+        if self.state != DiscordConnectionState::Authorized {
             return Err(DiscordError::AuthorizationFailed);
         }
         let mut pipe_lock = pipe_client.lock().await;
@@ -200,7 +215,7 @@ impl IpcClient {
             return Err(DiscordError::AuthenticationFailed);
         }
 
-        self.authenticated = true;
+        self.state = DiscordConnectionState::Authenticated;
         Ok(())
     }
 
@@ -208,14 +223,9 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.handshake_done {
-            return Err(DiscordError::HandshakeNotDone);
-        }
-        if !self.authorized {
-            return Err(DiscordError::AuthorizationFailed);
-        }
-        if !self.authenticated {
-            return Err(DiscordError::AuthenticationFailed);
+
+        if self.state != DiscordConnectionState::Authenticated {
+            return Err(DiscordError::ClientNotConnected);
         }
 
         let mut pipe_lock = pipe_client.lock().await;
@@ -248,14 +258,8 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.handshake_done {
-            return Err(DiscordError::HandshakeNotDone);
-        }
-        if !self.authorized {
-            return Err(DiscordError::AuthorizationFailed);
-        }
-        if !self.authenticated {
-            return Err(DiscordError::AuthenticationFailed);
+        if self.state != DiscordConnectionState::Authenticated {
+            return Err(DiscordError::ClientNotConnected);
         }
 
         let mut pipe_lock = pipe_client.lock().await;
@@ -281,15 +285,10 @@ impl IpcClient {
         let Some(pipe_client) = &mut self.pipe_client else {
             return Err(DiscordError::PipeNotConnected);
         };
-        if !self.handshake_done {
-            return Err(DiscordError::HandshakeNotDone);
+        if self.state != DiscordConnectionState::Authenticated {
+            return Err(DiscordError::ClientNotConnected);
         }
-        if !self.authorized {
-            return Err(DiscordError::AuthorizationFailed);
-        }
-        if !self.authenticated {
-            return Err(DiscordError::AuthenticationFailed);
-        }
+
         let mut pipe_lock = pipe_client.lock().await;
 
         pipe_lock
@@ -335,7 +334,9 @@ pub async fn read_message_from_lock(
 // for running these tests, discord should be running on the background
 #[cfg(test)]
 mod tests {
+    use super::DiscordConnectionState;
     use super::IpcClient;
+
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
@@ -369,14 +370,15 @@ mod tests {
 
         ipc_client.connect().await.unwrap();
         assert!(ipc_client.pipe_client.is_some());
+        assert_eq!(ipc_client.state, DiscordConnectionState::Connected);
 
-        ipc_client.handshake(client_id).await.unwrap();
+        ipc_client.handshake(&client_id).await.unwrap();
 
-        assert!(ipc_client.handshake_done);
+        assert_eq!(ipc_client.state, DiscordConnectionState::HandshakeDone);
 
         let code = ipc_client.authorize().await.unwrap();
 
-        assert!(ipc_client.authorized);
+        assert_eq!(ipc_client.state, DiscordConnectionState::Authorized);
 
         let token = ipc_client
             .get_access_tokens(&code, &client_secret, redirect_uri)
@@ -385,7 +387,7 @@ mod tests {
 
         ipc_client.authenticate(&token).await.unwrap();
 
-        assert!(ipc_client.authenticated);
+        assert_eq!(ipc_client.state, DiscordConnectionState::Authenticated);
 
         ipc_client.set_voice_settings(true, false).await.unwrap();
 

@@ -50,4 +50,10 @@ pub enum DiscordError {
 
     #[error("Spawned GenServer Error")]
     GenServerError(GenServerError),
+
+    #[error("Error Client alredy connected")]
+    ClientAlreadyConnected,
+
+    #[error("Error Client not connected")]
+    ClientNotConnected,
 }
