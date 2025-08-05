@@ -21,4 +21,4 @@ test:
 	@cd src-tauri && cargo test -- --nocapture --test-threads=1
 
 test-discord:
-	@cd src-tauri && cargo test -p discord-async 
+	@cd src-tauri && cargo test -p discord

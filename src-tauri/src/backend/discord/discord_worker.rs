@@ -1,230 +1,162 @@
-use std::sync::mpsc;
-use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
+use crate::discord_state::DiscordState;
+use crate::discord_state::DiscordStateHandler;
+use crate::discord_state::DiscordVoiceSettings;
+use crate::discord_state::InCallMessage;
+use crate::discord_state::InMessage;
+use crate::discord_state::OutMessage;
+use crate::error::DiscordError;
+use crate::ipc::DiscordConnectionState;
 
-use crate::client::*;
-use crate::error::*;
-use config::DSConfig;
-
-const REDIRECT_URI: &str = "https://www.mechardo3d.xyz/";
-
-enum DiscordWorkerMessage {
-    Stop,
-    GetVoiceSettigs,
-    SetVoiceSetting(bool, bool),
-    Disconnect,
-}
-
-pub enum DiscordUpdate {
-    NewAccessToken(String),
-    NewRefreshToken(String),
-    NewDiscordVoiceSetting(bool, bool),
-}
-
-struct DiscordState {
-    muted: bool,
-    deafen: bool,
-    updates: Vec<DiscordUpdate>,
-    acces_token: Option<String>,
-    refresh_token: Option<String>,
-}
-
-impl DiscordState {
-    pub fn new() -> Self {
-        DiscordState {
-            muted: false,
-            deafen: false,
-            updates: vec![],
-            acces_token: None,
-            refresh_token: None,
-        }
-    }
-
-    pub fn write_state(&mut self, muted: bool, deafen: bool) {
-        self.muted = muted;
-        self.deafen = deafen;
-    }
-
-    pub fn update_state(&mut self, muted: bool, deafen: bool) {
-        if self.muted != muted || self.deafen != deafen {
-            self.updates
-                .push(DiscordUpdate::NewDiscordVoiceSetting(muted, deafen));
-        }
-        self.muted = muted;
-        self.deafen = deafen;
-    }
-
-    pub fn get_state(&self) -> (bool, bool) {
-        (self.muted, self.deafen)
-    }
-
-    pub fn has_update(&self) -> bool {
-        self.updates.len() > 0
-    }
-
-    pub fn get_update(&mut self) -> Option<DiscordUpdate> {
-        self.updates.pop()
-    }
-
-    pub fn save_tokens(&mut self, access_token: String, refresh_token: String) {
-        self.acces_token = Some(access_token.clone());
-        self.refresh_token = Some(refresh_token.clone());
-        self.updates
-            .push(DiscordUpdate::NewAccessToken(access_token));
-        self.updates
-            .push(DiscordUpdate::NewRefreshToken(refresh_token));
-    }
-}
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct DiscordWorker {
-    thread: Option<thread::JoinHandle<()>>,
-    tx: Option<mpsc::Sender<DiscordWorkerMessage>>,
-    _rx: Option<mpsc::Receiver<DiscordWorkerMessage>>,
-    state: Arc<RwLock<DiscordState>>,
+    discord_handler: DiscordStateHandler,
+    voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
 }
 
 impl DiscordWorker {
-    pub fn new() -> DiscordWorker {
-        DiscordWorker {
-            thread: None,
-            tx: None,
-            _rx: None,
-            state: Arc::new(RwLock::new(DiscordState::new())),
+    pub async fn new(
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+        access_token: Option<String>,
+        refresh_token: Option<String>,
+    ) -> Self {
+        let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings {
+            mute: false,
+            deafen: false,
+        }));
+
+        let discord_handler = DiscordState::spawn(
+            client_id,
+            client_secret,
+            redirect_url,
+            access_token,
+            refresh_token,
+            voice_settings.clone(),
+        )
+        .await;
+
+        Self {
+            discord_handler,
+            voice_settings,
         }
     }
 
-    pub fn start(&mut self, config: DSConfig) -> Result<(), DiscordError> {
-        let (tx, rx_thread) = mpsc::channel();
-
-        self.tx = Some(tx);
-
-        let state = self.state.clone();
-
-        let t = thread::spawn(move || {
-            let mut ds = DiscordClient::new(
-                config.discord_client_id.clone().unwrap(),
-                config.discord_access_token.clone(),
-                config.discord_refresh_token.clone(),
-                config.discord_secret_key.clone().unwrap(),
-                REDIRECT_URI.to_string(),
-            );
-
-            loop {
-                if !ds.is_connected() {
-                    ds.connect_loop();
-                    if ds.is_connected() {
-                        state
-                            .write()
-                            .unwrap()
-                            .save_tokens(ds.get_access_token(), ds.get_refresh_token());
-                    }
-                }
-
-                match rx_thread.recv_timeout(Duration::from_millis(10)) {
-                    Ok(msg) => match msg {
-                        DiscordWorkerMessage::Stop => {
-                            break;
-                        }
-                        DiscordWorkerMessage::GetVoiceSettigs => match ds.get_voice_settings() {
-                            Some((m, d)) => {
-                                state.write().unwrap().update_state(m, d);
-                            }
-                            None => {}
-                        },
-                        DiscordWorkerMessage::SetVoiceSetting(m, d) => {
-                            state.write().unwrap().write_state(m, d);
-                            ds.set_voice_settings(m || d, d);
-                        }
-                        DiscordWorkerMessage::Disconnect => {
-                            ds.disconnect();
-                        }
-                    },
-                    Err(_) => { //Ignore
-                    }
-                }
-                match ds.get_voice_settings() {
-                    Some((m, d)) => {
-                        state.write().unwrap().update_state(m, d);
-                    }
-                    None => {}
-                };
-            }
-        });
-        self.thread = Some(t);
-
-        Ok(())
+    pub async fn start(&mut self) -> Result<(), DiscordError> {
+        self.discord_handler
+            .cast(InMessage::Fetch)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))
     }
 
-    pub fn stop(&mut self) -> Result<(), DiscordError> {
-        match &self.tx {
-            Some(tx) => {
-                tx.send(DiscordWorkerMessage::Stop).unwrap();
-            }
-            None => {
-                return Err(DiscordError::InternalChannelClosed);
-            }
+    pub async fn get_voice_settings(&self) -> DiscordVoiceSettings {
+        let lock = self.voice_settings.lock().await;
+        (*lock).clone()
+    }
+
+    pub async fn set_voice_settings(
+        &mut self,
+        mute: bool,
+        deafen: bool,
+    ) -> Result<(), DiscordError> {
+        self.discord_handler
+            .cast(InMessage::SetVoiceSetting(mute, deafen))
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))
+    }
+
+    pub async fn is_connected(&mut self) -> Result<bool, DiscordError> {
+        let st: OutMessage = self
+            .discord_handler
+            .call(InCallMessage::DiscordStatus)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))?;
+        if st == OutMessage::DiscordStatus(DiscordConnectionState::Authenticated) {
+            return Ok(true);
         }
+        Ok(false)
+    }
 
-        if let Some(handle) = self.thread.take() {
-            match handle.join() {
-                Ok(_) => {
-                    self.thread = None;
-                }
-                Err(e) => {
-                    println!("Error cerrando thread: {:?}", e);
-                    return Err(DiscordError::ErrorClosingThread);
-                }
-            }
+    pub async fn disconnect(&mut self) -> Result<(), DiscordError> {
+        self.discord_handler
+            .cast(InMessage::DisconnectChannel)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DiscordWorker;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::path::PathBuf;
+    use tokio::time::{Duration, sleep};
+
+    fn load_env_file() {
+        let env_file_path = PathBuf::from("../../../../discord.env");
+
+        let reader = BufReader::new(File::open(env_file_path).unwrap());
+
+        for line in reader.lines() {
+            let line = line.unwrap();
+            if line.starts_with("#") {
+                continue;
+            };
+            match line.split_once('=') {
+                Some((key, value)) => unsafe { std::env::set_var(key, value) },
+                None => continue,
+            };
         }
-
-        Ok(())
     }
+    #[tokio::test]
+    async fn test_discord_worker_connection() {
+        load_env_file();
 
-    pub fn get_voice_settings(&mut self) -> Result<(bool, bool), DiscordError> {
-        match &self.tx {
-            Some(tx) => {
-                tx.send(DiscordWorkerMessage::GetVoiceSettigs).unwrap();
-            }
-            None => {
-                return Err(DiscordError::InternalChannelClosed);
-            }
-        }
+        let client_id = std::env::var("DISCORD_CLIENT_ID").unwrap();
+        let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
+        let redirect_url = "https://www.mechardo3d.xyz/".to_string();
 
-        let (m, d) = self.state.read().unwrap().get_state();
-        Ok((m, d))
-    }
+        let mut discord_worker =
+            DiscordWorker::new(client_id, client_secret, redirect_url, None, None).await;
 
-    pub fn set_voice_settings(&mut self, m: bool, d: bool) -> Result<(), DiscordError> {
-        match &self.tx {
-            Some(tx) => tx
-                .send(DiscordWorkerMessage::SetVoiceSetting(m, d))
-                .map_err(|_| DiscordError::InternalChannelClosed)?,
-            None => {
-                return Err(DiscordError::InternalChannelClosed);
-            }
-        }
-        Ok(())
-    }
+        discord_worker.start().await.unwrap();
 
-    pub fn disconnect(&mut self) -> Result<(), DiscordError> {
-        match &self.tx {
-            Some(tx) => {
-                tx.send(DiscordWorkerMessage::Disconnect).unwrap();
-            }
-            None => {
-                return Err(DiscordError::InternalChannelClosed);
-            }
-        }
+        while !discord_worker.is_connected().await.unwrap() {}
 
-        Ok(())
-    }
+        discord_worker
+            .set_voice_settings(true, false)
+            .await
+            .unwrap();
+        sleep(Duration::from_secs(1)).await;
 
-    pub fn has_update(&self) -> bool {
-        self.state.read().unwrap().has_update()
-    }
+        let vs = discord_worker.get_voice_settings().await;
 
-    pub fn get_update(&self) -> Option<DiscordUpdate> {
-        self.state.write().unwrap().get_update()
+        assert!(vs.mute);
+        assert!(!vs.deafen);
+
+        discord_worker.set_voice_settings(true, true).await.unwrap();
+        sleep(Duration::from_secs(1)).await;
+
+        let vs = discord_worker.get_voice_settings().await;
+
+        assert!(vs.mute);
+        assert!(vs.deafen);
+
+        discord_worker
+            .set_voice_settings(false, false)
+            .await
+            .unwrap();
+        sleep(Duration::from_secs(1)).await;
+
+        let vs = discord_worker.get_voice_settings().await;
+
+        assert!(!vs.mute);
+        assert!(!vs.deafen);
+
+        discord_worker.disconnect().await.unwrap();
+        sleep(Duration::from_secs(1)).await;
     }
 }

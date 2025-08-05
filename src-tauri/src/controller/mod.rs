@@ -1,5 +1,5 @@
 use config::*;
-use discord::discord_worker::{DiscordUpdate, DiscordWorker};
+use discord::discord_worker::{self, DiscordWorker};
 use serial::serial_worker::SerialWorker;
 use tauri::AppHandle;
 
@@ -13,12 +13,20 @@ pub struct Controller {
 
 impl Controller {
     pub async fn new() -> Self {
-        let mut discord_worker = DiscordWorker::new();
-        let mut serial_worker = SerialWorker::new();
         let mut config = DSConfig::new();
-
         config.load();
-        discord_worker.start(config.clone()).unwrap();
+
+        let mut discord_worker = DiscordWorker::new(
+            config.discord_client_id.clone(),
+            config.discord_secret_key.clone(),
+            config.redirect_url.clone(),
+            config.discord_access_token.clone(),
+            config.discord_refresh_token.clone(),
+        )
+        .await;
+        let mut serial_worker = SerialWorker::new();
+
+        discord_worker.start().await.unwrap();
         serial_worker
             .start(config.last_port_connected.clone())
             .await
@@ -31,33 +39,43 @@ impl Controller {
         }
     }
 
-    pub fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool) {
-        self.discord_worker.set_voice_settings(mute, deaf).unwrap();
+    pub async fn ds_set_voice_settings(&mut self, mute: bool, deaf: bool) {
+        self.discord_worker
+            .set_voice_settings(mute, deaf)
+            .await
+            .unwrap();
     }
 
-    pub fn controller_loop(&mut self, _app: &AppHandle) {
+    pub async fn controller_loop(&mut self, _app: &AppHandle) {
         // app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
         if self.serial_worker.has_update() {}
-        if self.discord_worker.has_update() {
-            if let Some(update) = self.discord_worker.get_update() {
-                match update {
-                    DiscordUpdate::NewAccessToken(token) => {
-                        self.config.discord_access_token = Some(token);
-                        self.config.save();
-                    }
-                    DiscordUpdate::NewRefreshToken(token) => {
-                        self.config.discord_refresh_token = Some(token);
-                        self.config.save();
-                    }
-                    DiscordUpdate::NewDiscordVoiceSetting(mute, deaf) => {
-                        //todo
-                        // sw.set_voice_settings(mute, deaf);
-                        info!("mute: {}   deaf:{}", mute, deaf);
-                    }
-                }
-            }
-        }
+        let discord_voice_settings = self.discord_worker.get_voice_settings().await;
+
+        info!(
+            "mute: {}   deaf:{}",
+            discord_voice_settings.mute, discord_voice_settings.deafen
+        );
+
+        // if self.discord_worker.has_update() {
+        //     if let Some(update) = self.discord_worker.get_update() {
+        //         match update {
+        //             DiscordUpdate::NewAccessToken(token) => {
+        //                 self.config.discord_access_token = Some(token);
+        //                 self.config.save();
+        //             }
+        //             DiscordUpdate::NewRefreshToken(token) => {
+        //                 self.config.discord_refresh_token = Some(token);
+        //                 self.config.save();
+        //             }
+        //             DiscordUpdate::NewDiscordVoiceSetting(mute, deaf) => {
+        //                 //todo
+        //                 // sw.set_voice_settings(mute, deaf);
+        //                 info!("mute: {}   deaf:{}", mute, deaf);
+        //             }
+        //         }
+        //     }
+        // }
     }
 }
 

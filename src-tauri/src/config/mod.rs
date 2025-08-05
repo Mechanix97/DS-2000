@@ -9,10 +9,13 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
+const DEFAULT_REDIRECT_URL: &str = "https://www.mechardo3d.xyz/";
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DSConfig {
-    pub discord_client_id: Option<String>,
-    pub discord_secret_key: Option<String>,
+    pub discord_client_id: String,
+    pub discord_secret_key: String,
+    pub redirect_url: String,
     pub discord_access_token: Option<String>,
     pub discord_refresh_token: Option<String>,
     pub last_port_connected: Option<String>,
@@ -22,8 +25,9 @@ impl DSConfig {
     pub fn new() -> Self {
         // dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         Self {
-            discord_client_id: None,
-            discord_secret_key: None,
+            discord_client_id: "".to_string(),
+            discord_secret_key: "".to_string(),
+            redirect_url: DEFAULT_REDIRECT_URL.to_string(),
             discord_access_token: None,
             discord_refresh_token: None,
             last_port_connected: None,
@@ -67,14 +71,10 @@ impl DSConfig {
 
                         *self = serde_json::from_slice(&decrypted).expect("Failed to parse JSON");
 
-                        if self.discord_client_id.is_none() {
-                            self.discord_client_id =
-                                Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
-                        }
-                        if self.discord_secret_key.is_none() {
-                            self.discord_secret_key =
-                                Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
-                        }
+                        self.discord_client_id = var("DISCORD_CLIENT_ID").unwrap_or("".to_string());
+
+                        self.discord_secret_key =
+                            var("DISCORD_SECRET_KEY").unwrap_or("".to_string());
                     }
                     Err(_) => {
                         self.save();
@@ -91,12 +91,9 @@ impl DSConfig {
                 std::fs::create_dir_all(&appdata_path).unwrap();
             }
 
-            if self.discord_client_id.is_none() {
-                self.discord_client_id = Some(var("DISCORD_CLIENT_ID").unwrap_or("".to_string()));
-            }
-            if self.discord_secret_key.is_none() {
-                self.discord_secret_key = Some(var("DISCORD_SECRET_KEY").unwrap_or("".to_string()));
-            }
+            self.discord_client_id = var("DISCORD_CLIENT_ID").unwrap_or("".to_string());
+
+            self.discord_secret_key = var("DISCORD_SECRET_KEY").unwrap_or("".to_string());
 
             let json = serde_json::to_string_pretty(self).unwrap();
 
