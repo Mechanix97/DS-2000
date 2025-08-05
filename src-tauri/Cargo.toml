@@ -55,3 +55,5 @@ serial2-tokio = "0.1"
 tokio-util = "0.7.15"
 futures-util = { version = "0.3", features = ["sink"] }
 thiserror = "2.0"
+spawned-concurrency = "0.2.2"
+spawned-rt = "0.2.2"
