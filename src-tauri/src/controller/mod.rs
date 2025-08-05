@@ -27,10 +27,10 @@ impl Controller {
         let mut serial_worker = SerialWorker::new();
 
         discord_worker.start().await.unwrap();
-        serial_worker
-            .start(config.last_port_connected.clone())
-            .await
-            .unwrap();
+        // serial_worker
+        //     .start(config.last_port_connected.clone())
+        //     .await
+        //     .unwrap();
 
         Controller {
             discord_worker: discord_worker,
@@ -49,10 +49,11 @@ impl Controller {
     pub async fn controller_loop(&mut self, _app: &AppHandle) {
         // app.emit("DOWNLOAD_PROGRESS", "HOLA").unwrap();
         //TODO DW and SW logic
-        if self.serial_worker.has_update() {}
+        // if self.serial_worker.has_update() {}
+        println!("HOLAAA");
         let discord_voice_settings = self.discord_worker.get_voice_settings().await;
 
-        info!(
+        println!(
             "mute: {}   deaf:{}",
             discord_voice_settings.mute, discord_voice_settings.deafen
         );
@@ -81,27 +82,38 @@ impl Controller {
 
 pub mod commands {
     use super::Controller;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use tauri::{AppHandle, State};
+    use tokio::sync::Mutex;
     use tracing::info;
 
     #[tauri::command]
-    pub fn ds_set_voice_settings_command(
+    pub async fn ds_set_voice_settings_command(
         mute: bool,
         deaf: bool,
         controller: State<'_, Arc<Mutex<Controller>>>,
-    ) {
+    ) -> Result<(), &'static str> {
         info!("ds_set_voice_settings_command");
-        controller.lock().unwrap().ds_set_voice_settings(mute, deaf);
+        controller
+            .lock()
+            .await
+            .ds_set_voice_settings(mute, deaf)
+            .await;
+        Ok(())
     }
 
     #[tauri::command]
-    pub fn controller_start(app: AppHandle, controller: State<'_, Arc<Mutex<Controller>>>) {
+    pub async fn controller_start(
+        app: AppHandle,
+        controller: State<'_, Arc<Mutex<Controller>>>,
+    ) -> Result<(), &'static str> {
+        println!("controller_start");
         let controller_clone = controller.inner().clone();
-        std::thread::spawn(move || {
+        tokio::spawn(async move {
             loop {
-                controller_clone.lock().unwrap().controller_loop(&app);
+                controller_clone.lock().await.controller_loop(&app).await;
             }
         });
+        Ok(())
     }
 }

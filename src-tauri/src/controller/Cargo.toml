@@ -11,6 +11,7 @@ discord.workspace = true
 tracing.workspace = true
 tauri.workspace = true
 tauri-plugin-shell.workspace = true
+tokio.workspace = true
 
 
 [lib]

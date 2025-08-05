@@ -1,8 +1,8 @@
 use controller::Controller;
 use controller::commands;
 
-use std::sync::{Arc, Mutex};
-use tokio;
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
