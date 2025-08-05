@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tracing::debug;
 
-const DISCORD_FETCH_INTERVAL: u64 = 100;
+const DISCORD_FETCH_INTERVAL: u64 = 50;
 
 pub type DiscordStateHandler = GenServerHandle<DiscordState>;
 
@@ -21,6 +21,7 @@ pub enum InCallMessage {
 pub enum InMessage {
     Fetch,
     SetVoiceSetting(bool, bool),
+    DisconnectChannel,
 }
 
 #[derive(Clone, PartialEq)]
@@ -233,6 +234,13 @@ impl GenServer for DiscordState {
                 }
                 CastResponse::NoReply(self)
             }
+            Self::CastMsg::DisconnectChannel => {
+                if let Err(err) = self.ipc_client.select_voice_channel(None).await {
+                    debug!("Error while setting voice settings {err}");
+                    self.ipc_client.disconnect().await;
+                }
+                CastResponse::NoReply(self)
+            }
         }
     }
 
@@ -287,7 +295,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_discord_worker_connection() {
+    async fn test_discord_state_connection() {
         load_env_file();
 
         let client_id = std::env::var("DISCORD_CLIENT_ID").unwrap();
