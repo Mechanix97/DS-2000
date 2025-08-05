@@ -106,7 +106,7 @@ impl DSConfig {
             let cipher = Aes256Gcm::new_from_slice(&key).expect("Failed to create cipher");
 
             let mut nonce_bytes = [0u8; 12];
-            rand::thread_rng().fill_bytes(&mut nonce_bytes);
+            rand::rng().fill_bytes(&mut nonce_bytes);
             let nonce = Nonce::from_slice(&nonce_bytes);
 
             let ciphertext = cipher
