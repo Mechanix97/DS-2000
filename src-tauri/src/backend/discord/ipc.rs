@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 #[cfg(windows)]
 use tokio::sync::Mutex;
+use tracing::info;
 
 use tokio::io::AsyncWriteExt;
 #[cfg(windows)]
@@ -89,8 +90,11 @@ impl IpcClient {
     }
 
     pub async fn disconnect(&mut self) {
-        self.pipe_client = None;
-        self.state = DiscordConnectionState::NotConnected;
+        if self.state != DiscordConnectionState::NotConnected {
+            info!("Discord disconnected");
+            self.pipe_client = None;
+            self.state = DiscordConnectionState::NotConnected;
+        }
     }
 
     pub async fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {
@@ -269,6 +273,7 @@ impl IpcClient {
             return Err(DiscordError::AuthenticationFailed);
         }
 
+        info!("Discord connected");
         self.state = DiscordConnectionState::Authenticated;
         Ok(())
     }

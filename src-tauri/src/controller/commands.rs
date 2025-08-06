@@ -28,7 +28,7 @@ pub async fn controller_start(
     app: AppHandle,
     controller: State<'_, Arc<Mutex<Controller>>>,
 ) -> Result<(), &'static str> {
-    debug!("controller start");
+    debug!("Starting controller");
     let controller_clone = controller.inner().clone();
     let app_clone = app.clone();
     tokio::spawn(async move { background_loop(app_clone, controller_clone).await });
@@ -80,7 +80,7 @@ async fn background_loop(
             .update_tokens(access_token, refresh_token)
             .await;
 
-        let last_port_used = Some("COM3".into());
+        let last_port_used = controller_lock.serial_worker.get_port_name().await?;
         controller_lock
             .config
             .update_last_used_port(last_port_used)

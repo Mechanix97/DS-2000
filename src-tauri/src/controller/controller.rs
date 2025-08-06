@@ -1,8 +1,13 @@
+use std::time::Duration;
+
 use crate::error::ControllerError;
 
 use config::config::Config;
 use discord::discord_worker::DiscordWorker;
 use serial::serial_worker::SerialWorker;
+
+const DEFAULT_SERIAL_BAUDRATE: u32 = 115200;
+const DEFAULT_SERIAL_TIMEOUT: u64 = 1000; //millis
 
 pub struct Controller {
     pub discord_worker: DiscordWorker,
@@ -24,10 +29,16 @@ impl Controller {
         )
         .await;
 
+        let serial_worker = SerialWorker::new(
+            DEFAULT_SERIAL_BAUDRATE,
+            Duration::from_millis(DEFAULT_SERIAL_TIMEOUT),
+        )
+        .await;
+
         Controller {
-            discord_worker: discord_worker,
-            serial_worker: SerialWorker::new(),
-            config: config,
+            discord_worker,
+            serial_worker,
+            config,
         }
     }
 
@@ -36,8 +47,8 @@ impl Controller {
 
         self.discord_worker.start().await?;
 
-        // let last_used_port = self.config.last_port_connected.clone();
-        // self.serial_worker.start(last_used_port).await?;
+        let last_used_port = self.config.get_last_used_port().await;
+        self.serial_worker.start(last_used_port).await?;
         Ok(())
     }
 

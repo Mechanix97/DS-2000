@@ -10,13 +10,15 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 use tokio_util::codec::Framed;
-use tracing::info;
+use tracing::{debug, info};
 
+#[derive(Clone)]
 pub struct Port {
-    name: Option<String>,
-    baudrate: u32,
-    timeout: Duration,
-    framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
+    pub name: Option<String>,
+    pub baudrate: u32,
+    pub timeout: Duration,
+    pub framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
+    pub connected: bool,
 }
 
 impl Port {
@@ -26,6 +28,7 @@ impl Port {
             baudrate: 0,
             timeout: Duration::from_millis(0),
             framed: None,
+            connected: false,
         }
     }
 
@@ -61,10 +64,16 @@ impl Port {
             let _ = framed.flush().await;
             drop(framed);
         }
+        if self.connected {
+            if let Some(port_name) = &self.name {
+                info!("Serial port {port_name} disconnected");
+            }
+        }
         self.name = None;
         self.baudrate = 0;
         self.timeout = Duration::from_millis(0);
         self.framed = None;
+        self.connected = false;
         Ok(())
     }
 
@@ -84,22 +93,19 @@ impl Port {
         let mut available_ports = self.get_ports()?;
         available_ports.sort();
         for p in available_ports {
-            info!("Trying to connect to port {:?}", p);
-            match self.connect(&p, baudrate, timeout) {
-                Ok(_) => match self.authenticate().await {
-                    Ok(_) => {
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        info!("Disconnecting from port {:?}", p);
-                        self.disconnect().await.map_err(|_| e)?;
-                        continue;
-                    }
-                },
-                Err(e) => {
-                    info!("{:?}", e);
-                }
+            debug!("Trying to connect to port {:?}", p);
+            if let Err(err) = self.connect(&p, baudrate, timeout) {
+                debug!("{:?}", err);
+                continue;
             }
+            if let Err(err) = self.authenticate().await {
+                debug!("Disconnecting from port {:?}", p);
+                self.disconnect().await.map_err(|_| err)?;
+                continue;
+            }
+            self.connected = true;
+            info!("Serial port {p:?} connected");
+            return Ok(());
         }
         Err(SerialPortError::PortNotConnected)
     }
@@ -112,18 +118,18 @@ impl Port {
 
         match msg {
             SerialMessage::Pong(_) => {
-                info!("Authentication successful");
+                debug!("Authentication successful");
                 Ok(())
             }
             _ => {
-                info!("Authentication failed");
+                debug!("Authentication failed");
                 Err(SerialPortError::AuthenticationFailed)
             }
         }
     }
 
     pub fn is_connected(&self) -> bool {
-        self.framed.is_some()
+        self.connected
     }
 
     pub async fn send_message(&self, msg: &SerialMessage) -> Result<(), SerialPortError> {
@@ -156,8 +162,12 @@ impl Port {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use super::Port;
+    use crate::messages::ping::PingMessage;
     use crate::messages::pong::PongMessage;
+    use crate::serial_message::SerialMessage;
+
+    use tokio::time::Duration;
 
     #[tokio::test]
     pub async fn test_auto_connect() {

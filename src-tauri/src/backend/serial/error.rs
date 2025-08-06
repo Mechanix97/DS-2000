@@ -1,3 +1,4 @@
+use spawned_concurrency::error::GenServerError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -26,6 +27,9 @@ pub enum SerialPortError {
     InternalError,
     #[error("I/O error: {0}")]
     IoError(std::io::Error),
+
+    #[error("Spawned GenServer Error")]
+    GenServerError(GenServerError),
 }
 
 impl From<std::io::Error> for SerialPortError {
