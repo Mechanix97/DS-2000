@@ -5,6 +5,9 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::debug;
 
+const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
+const DISCORD_VOICE_SETTINGS_EVENT: &str = "DISCORD_VOICE_SETTINGS_EVENT";
+
 #[tauri::command]
 pub async fn ds_set_voice_settings_command(
     mute: bool,
@@ -15,7 +18,7 @@ pub async fn ds_set_voice_settings_command(
     controller
         .lock()
         .await
-        .ds_set_voice_settings(mute, deaf)
+        .ds_set_voice_settings(mute || deaf, deaf)
         .await;
     Ok(())
 }
@@ -46,7 +49,14 @@ async fn background_loop(
     debug!("Starting background loop");
 
     loop {
-        let controller_lock = controller.lock().await;
+        let mut controller_lock = controller.lock().await;
+
+        if !controller_lock.discord_worker.is_connected().await? {
+            app.emit(DISCORD_CONNECTION_STATUS_EVENT, "false")?;
+        }
+
+        app.emit(DISCORD_CONNECTION_STATUS_EVENT, "true")?;
+
         let discord_voice_settings = controller_lock.discord_worker.get_voice_settings().await;
 
         if voice_settings != discord_voice_settings {
@@ -59,7 +69,16 @@ async fn background_loop(
             // controller_lock
             //     .serial_worker
             //     .set_voice_settings(voice_settings.mute, voice_settings.deafen);
-            app.emit("DOWNLOAD_PROGRESS", "HOLA")?;
+            app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
         }
+
+        let access_token = controller_lock.discord_worker.get_access_token().await?;
+        let refresh_token = controller_lock.discord_worker.get_refresh_token().await?;
+
+        controller_lock.config.discord_access_token = access_token;
+        controller_lock.config.discord_refresh_token = refresh_token;
+
+        // TODO: move this to a separate thread
+        controller_lock.config.save();
     }
 }

@@ -85,6 +85,30 @@ impl DiscordWorker {
             .await
             .map_err(|e| DiscordError::GenServerError(e))
     }
+
+    pub async fn get_access_token(&mut self) -> Result<Option<String>, DiscordError> {
+        let om: OutMessage = self
+            .discord_handler
+            .call(InCallMessage::AccessToken)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))?;
+        let OutMessage::AccessToken(at) = om else {
+            return Ok(None);
+        };
+        Ok(at)
+    }
+
+    pub async fn get_refresh_token(&mut self) -> Result<Option<String>, DiscordError> {
+        let om: OutMessage = self
+            .discord_handler
+            .call(InCallMessage::RefreshToken)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))?;
+        let OutMessage::RefreshToken(rt) = om else {
+            return Ok(None);
+        };
+        Ok(rt)
+    }
 }
 
 #[cfg(test)]
