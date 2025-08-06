@@ -16,6 +16,7 @@ async fn main() {
 
     let controller = Arc::new(Mutex::new(Controller::new().await));
     let shutdown_complete = Arc::new(Mutex::new(false));
+
     controller
         .lock()
         .await

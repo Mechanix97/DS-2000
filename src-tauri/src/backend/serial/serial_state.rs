@@ -78,19 +78,19 @@ impl GenServer for SerialPortState {
             InMessage::Start(port) => {
                 if let Some(port_name) = port {
                     debug!("Connecting to last used port {port_name}");
-                    if let Err(err) =
-                        self.port
-                            .connect(&PathBuf::from(&port_name), self.baudrate, self.timeout)
+                    if let Err(err) = self
+                        .port
+                        .connect_and_authenticate(
+                            &PathBuf::from(&port_name),
+                            self.baudrate,
+                            self.timeout,
+                        )
+                        .await
                     {
                         debug!("Error connecting to given port {port_name}: {err}");
                     }
                 }
-
-                send_after(
-                    Duration::from_millis(1),
-                    handle.clone(),
-                    Self::CastMsg::Fetch,
-                );
+                send_after(Duration::from_secs(1), handle.clone(), Self::CastMsg::Fetch);
             }
             InMessage::Fetch => {
                 if !self.port.is_connected() {
