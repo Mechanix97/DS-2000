@@ -25,6 +25,6 @@ DS2000Button.addEventListener('click', async () => {
 });
 
 invoke('controller_start');
-listen('DOWNLOAD_PROGRESS', _ => {
-  console.log('Evento recibido desde Rust:')
+listen('DOWNLOAD_PROGRESS', event => {
+  console.log('Evento recibido desde Rust:' + event.payload)
 })

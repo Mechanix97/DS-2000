@@ -11,7 +11,8 @@ discord.workspace = true
 tracing.workspace = true
 tauri.workspace = true
 tauri-plugin-shell.workspace = true
-
+tokio.workspace = true
+thiserror.workspace = true
 
 [lib]
 path = "./mod.rs"

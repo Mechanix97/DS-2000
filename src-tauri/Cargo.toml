@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "src/backend/discord",
-    "src/backend/discord_async",
     "src/backend/serial",
     "src/controller",
     "src/config",
@@ -28,12 +27,11 @@ tauri-build = { version = "2.1.0", features = [] }
 
 [workspace.dependencies]
 discord = { path = "src/backend/discord" }
-discord_async = { path = "src/backend/discord_async" }
 serial = { path = "src/backend/serial" }
 controller = { path = "src/controller" }
 config = { path = "src/config" }
 
-tauri = { version = "2.4", features = [] }
+tauri = { version = "2.0", features = [] }
 tauri-plugin-shell = "2.0.0-beta"
 
 rand = "0.9"

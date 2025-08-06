@@ -15,6 +15,8 @@ pub type DiscordStateHandler = GenServerHandle<DiscordState>;
 #[derive(Clone)]
 pub enum InCallMessage {
     DiscordStatus,
+    AccessToken,
+    RefreshToken,
 }
 
 #[derive(Clone)]
@@ -28,9 +30,11 @@ pub enum InMessage {
 pub enum OutMessage {
     Done,
     DiscordStatus(DiscordConnectionState),
+    AccessToken(Option<String>),
+    RefreshToken(Option<String>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DiscordVoiceSettings {
     pub mute: bool,
     pub deafen: bool,
@@ -208,7 +212,6 @@ impl GenServer for DiscordState {
                     DiscordConnectionState::Authenticated => {
                         match self.ipc_client.get_voice_settings().await {
                             Ok((mute, deafen)) => {
-                                debug!("mute: {mute}    deafen: {deafen}");
                                 let mut lock = self.voice_setting.lock().await;
                                 *lock = DiscordVoiceSettings { mute, deafen };
                             }
@@ -253,6 +256,14 @@ impl GenServer for DiscordState {
             Self::CallMsg::DiscordStatus => {
                 let st = self.ipc_client.state.clone();
                 CallResponse::Reply(self, OutMessage::DiscordStatus(st))
+            }
+            Self::CallMsg::AccessToken => {
+                let at = self.access_token.clone();
+                CallResponse::Reply(self, OutMessage::AccessToken(at))
+            }
+            Self::CallMsg::RefreshToken => {
+                let rt = self.refresh_token.clone();
+                CallResponse::Reply(self, OutMessage::RefreshToken(rt))
             }
         }
     }

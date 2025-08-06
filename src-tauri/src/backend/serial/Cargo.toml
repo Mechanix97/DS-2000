@@ -10,6 +10,7 @@ serial2-tokio.workspace = true
 futures-util.workspace = true
 tracing.workspace = true
 bytes.workspace = true
+thiserror.workspace = true
 
 [lib]
 path = "./mod.rs"

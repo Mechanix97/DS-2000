@@ -3,16 +3,15 @@ name = "discord"
 version = "0.1.0"
 edition = "2024"
 
-
 [dependencies]
-config.workspace = true
-
-rand.workspace = true
+tracing.workspace = true
+tokio.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 reqwest.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-named_pipe = "0.4"
+rand.workspace = true
+spawned-rt.workspace = true
+spawned-concurrency.workspace = true
 
 [lib]
 path = "./mod.rs"

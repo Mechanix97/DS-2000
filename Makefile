@@ -2,7 +2,10 @@ include discord.env
 export
 
 run:
-	@cargo tauri dev
+	@set RUST_LOG=info&&cargo tauri dev
+
+run-debug:
+	@set RUST_LOG=debug&& cargo tauri dev
 
 deps:
 	@cargo install tauri-cli --version "^2.0.0" --locked
@@ -21,4 +24,4 @@ test:
 	@cd src-tauri && cargo test -- --nocapture --test-threads=1
 
 test-discord:
-	@cd src-tauri && cargo test -p discord-async 
+	@cd src-tauri && cargo test -p discord

@@ -1,20 +1,26 @@
-use controller::Controller;
 use controller::commands;
+use controller::controller::Controller;
 
-use std::sync::{Arc, Mutex};
-use tokio;
-use tracing::{debug, info};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::info;
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[tokio::main]
 async fn main() {
     let controller = Arc::new(Mutex::new(Controller::new().await));
+    controller
+        .lock()
+        .await
+        .start()
+        .await
+        .expect("Controller couldn't start");
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
-    tracing_subscriber::fmt().init();
-
-    info!("Aplicación iniciada");
-    debug!("Este es un log de debug");
+    info!("App started");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
