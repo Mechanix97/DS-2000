@@ -90,8 +90,11 @@ impl IpcClient {
     }
 
     pub async fn disconnect(&mut self) {
-        self.pipe_client = None;
-        self.state = DiscordConnectionState::NotConnected;
+        if self.state != DiscordConnectionState::NotConnected {
+            info!("Discord disconnected");
+            self.pipe_client = None;
+            self.state = DiscordConnectionState::NotConnected;
+        }
     }
 
     pub async fn read_message(&mut self) -> Result<PipeMessage, DiscordError> {

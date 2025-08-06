@@ -64,6 +64,11 @@ impl Port {
             let _ = framed.flush().await;
             drop(framed);
         }
+        if self.connected {
+            if let Some(port_name) = &self.name {
+                info!("Serial port {port_name} disconnected");
+            }
+        }
         self.name = None;
         self.baudrate = 0;
         self.timeout = Duration::from_millis(0);
