@@ -14,11 +14,11 @@ use tracing::{debug, info};
 
 #[derive(Clone)]
 pub struct Port {
-    name: Option<String>,
-    baudrate: u32,
-    timeout: Duration,
-    framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
-    connected: bool,
+    pub name: Option<String>,
+    pub baudrate: u32,
+    pub timeout: Duration,
+    pub framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
+    pub connected: bool,
 }
 
 impl Port {

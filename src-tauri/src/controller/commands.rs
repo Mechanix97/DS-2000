@@ -80,7 +80,7 @@ async fn background_loop(
             .update_tokens(access_token, refresh_token)
             .await;
 
-        let last_port_used = Some("COM3".into());
+        let last_port_used = controller_lock.serial_worker.get_port_name().await?;
         controller_lock
             .config
             .update_last_used_port(last_port_used)

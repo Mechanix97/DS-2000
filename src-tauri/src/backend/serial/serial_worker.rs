@@ -1,5 +1,7 @@
 use crate::error::SerialPortError;
+use crate::serial_state::InCallMessage;
 use crate::serial_state::InMessage;
+use crate::serial_state::OutMessage;
 use crate::serial_state::SerialPortHandler;
 use crate::serial_state::SerialPortState;
 
@@ -19,11 +21,23 @@ impl SerialWorker {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), SerialPortError> {
+    pub async fn start(&mut self, last_used_port: Option<String>) -> Result<(), SerialPortError> {
         debug!("Serial worker started");
         self.serial_port_handler
-            .cast(InMessage::Fetch)
+            .cast(InMessage::Start(last_used_port))
             .await
             .map_err(|e| SerialPortError::GenServerError(e))
+    }
+
+    pub async fn get_port_name(&mut self) -> Result<Option<String>, SerialPortError> {
+        let om: OutMessage = self
+            .serial_port_handler
+            .call(InCallMessage::PortName)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        let OutMessage::PortName(rt) = om else {
+            return Ok(None);
+        };
+        Ok(rt)
     }
 }

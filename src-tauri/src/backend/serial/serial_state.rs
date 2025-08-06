@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::error::SerialPortError;
 use crate::port::Port;
 
@@ -13,16 +15,20 @@ const SERIAL_AUTOCONNECT_INTERVAL: u64 = 30; //secs
 pub type SerialPortHandler = GenServerHandle<SerialPortState>;
 
 #[derive(Clone)]
-pub enum InCallMessage {}
+pub enum InCallMessage {
+    PortName,
+}
 
 #[derive(Clone)]
 pub enum InMessage {
     Fetch,
+    Start(Option<String>),
 }
 
 #[derive(Clone, PartialEq)]
 pub enum OutMessage {
     Done,
+    PortName(Option<String>),
 }
 
 #[derive(Clone)]
@@ -63,6 +69,23 @@ impl GenServer for SerialPortState {
         handle: &GenServerHandle<Self>,
     ) -> CastResponse<Self> {
         match message {
+            InMessage::Start(port) => {
+                if let Some(port_name) = port {
+                    debug!("Connecting to last used port {port_name}");
+                    if let Err(err) =
+                        self.port
+                            .connect(&PathBuf::from(&port_name), self.baudrate, self.timeout)
+                    {
+                        debug!("Error connecting to given port {port_name}: {err}");
+                    }
+                }
+
+                send_after(
+                    Duration::from_millis(1),
+                    handle.clone(),
+                    Self::CastMsg::Fetch,
+                );
+            }
             InMessage::Fetch => {
                 if !self.port.is_connected() {
                     if let Err(err) = self.port.auto_connect(self.baudrate, self.timeout).await {
@@ -88,10 +111,15 @@ impl GenServer for SerialPortState {
 
     async fn handle_call(
         self,
-        _message: Self::CallMsg,
+        message: Self::CallMsg,
         _handle: &GenServerHandle<Self>,
     ) -> CallResponse<Self> {
-        CallResponse::Unused
+        match message {
+            Self::CallMsg::PortName => {
+                let pn = self.port.name.clone();
+                CallResponse::Reply(self, OutMessage::PortName(pn))
+            }
+        }
     }
 }
 

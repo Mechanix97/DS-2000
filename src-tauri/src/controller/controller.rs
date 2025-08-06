@@ -47,8 +47,8 @@ impl Controller {
 
         self.discord_worker.start().await?;
 
-        // let last_used_port = self.config.last_port_connected.clone();
-        self.serial_worker.start().await?;
+        let last_used_port = self.config.get_last_used_port().await;
+        self.serial_worker.start(last_used_port).await?;
         Ok(())
     }
 
