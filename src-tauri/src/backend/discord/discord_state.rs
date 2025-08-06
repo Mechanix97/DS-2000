@@ -30,7 +30,7 @@ pub enum OutMessage {
     DiscordStatus(DiscordConnectionState),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DiscordVoiceSettings {
     pub mute: bool,
     pub deafen: bool,

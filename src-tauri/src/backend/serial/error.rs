@@ -1,16 +1,30 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum SerialPortError {
+    #[error("Port is not available")]
     PortNotAvailable,
+    #[error("Port is already connected")]
     PortAlreadyConnected,
+    #[error("Port is not connected")]
     PortNotConnected,
+    #[error("Internal channel closed unexpectedly")]
     InternalChannelClosed,
+    #[error("Error closing thread")]
     ErrorClosingThread,
+    #[error("Operation timed out")]
     TimedOut,
+    #[error("Authentication failed")]
     AuthenticationFailed,
+    #[error("Error reading from port")]
     ErrorReadingPort,
+    #[error("Message encoding error: {0}")]
     ErrorEncodingMsg(SerialMessageError),
+    #[error("Message decoding error: {0}")]
     ErrorDecodingMsg(SerialMessageError),
+    #[error("Internal error occurred")]
     InternalError,
+    #[error("I/O error: {0}")]
     IoError(std::io::Error),
 }
 
@@ -26,8 +40,9 @@ impl From<SerialMessageError> for SerialPortError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 
 pub enum SerialMessageError {
+    #[error("Error malformed data")]
     MalformedData,
 }
