@@ -10,6 +10,8 @@ hex.workspace = true
 rand.workspace = true
 serde.workspace = true
 directories.workspace = true
+tokio.workspace = true
+tracing.workspace = true
 
 [lib]
 path = "./mod.rs"
