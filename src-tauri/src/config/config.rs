@@ -16,7 +16,7 @@ use tokio::time::{Duration, sleep};
 use tracing::debug;
 
 const DEFAULT_REDIRECT_URL: &str = "https://www.mechardo3d.xyz/";
-const CONFIG_SAVE_INTERVAL: u64 = 15;
+const CONFIG_SAVE_INTERVAL: u64 = 60;
 
 pub struct Config {
     inner: Arc<Mutex<ConfigInfo>>,
