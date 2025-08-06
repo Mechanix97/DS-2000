@@ -75,10 +75,15 @@ async fn background_loop(
         let access_token = controller_lock.discord_worker.get_access_token().await?;
         let refresh_token = controller_lock.discord_worker.get_refresh_token().await?;
 
-        controller_lock.config.discord_access_token = access_token;
-        controller_lock.config.discord_refresh_token = refresh_token;
+        controller_lock
+            .config
+            .update_tokens(access_token, refresh_token)
+            .await;
 
-        // TODO: move this to a separate thread
-        controller_lock.config.save();
+        let last_port_used = Some("COM3".into());
+        controller_lock
+            .config
+            .update_last_used_port(last_port_used)
+            .await;
     }
 }

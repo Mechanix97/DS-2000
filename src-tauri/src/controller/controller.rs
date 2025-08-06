@@ -1,26 +1,26 @@
 use crate::error::ControllerError;
 
-use config::*;
+use config::config::Config;
 use discord::discord_worker::DiscordWorker;
 use serial::serial_worker::SerialWorker;
 
 pub struct Controller {
     pub discord_worker: DiscordWorker,
     pub serial_worker: SerialWorker,
-    pub config: DSConfig,
+    pub config: Config,
 }
 
 impl Controller {
     pub async fn new() -> Self {
-        let mut config = DSConfig::new();
-        config.load();
+        let mut config = Config::new();
+        config.load().await;
 
         let discord_worker = DiscordWorker::new(
-            config.discord_client_id.clone(),
-            config.discord_secret_key.clone(),
-            config.redirect_url.clone(),
-            config.discord_access_token.clone(),
-            config.discord_refresh_token.clone(),
+            config.get_discord_client_id().await,
+            config.get_discord_secret_key().await,
+            config.get_redirect_url().await,
+            config.get_discord_access_token().await,
+            config.get_discord_refresh_token().await,
         )
         .await;
 
@@ -32,7 +32,7 @@ impl Controller {
     }
 
     pub async fn start(&mut self) -> Result<(), ControllerError> {
-        // self.config.start().await?;
+        self.config.start().await;
 
         self.discord_worker.start().await?;
 
