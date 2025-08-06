@@ -17,6 +17,7 @@ pub type SerialPortHandler = GenServerHandle<SerialPortState>;
 #[derive(Clone)]
 pub enum InCallMessage {
     PortName,
+    Shutdown,
 }
 
 #[derive(Clone)]
@@ -38,6 +39,7 @@ pub struct SerialPortState {
     port: Port,
     baudrate: u32,
     timeout: Duration,
+    shutdown: bool,
 }
 
 impl SerialPortState {
@@ -48,6 +50,7 @@ impl SerialPortState {
             port: Port::new(),
             baudrate,
             timeout,
+            shutdown: false,
         }
     }
 
@@ -68,23 +71,26 @@ impl GenServer for SerialPortState {
         message: Self::CastMsg,
         handle: &GenServerHandle<Self>,
     ) -> CastResponse<Self> {
+        if self.shutdown {
+            return CastResponse::NoReply(self);
+        }
         match message {
             InMessage::Start(port) => {
                 if let Some(port_name) = port {
                     debug!("Connecting to last used port {port_name}");
-                    if let Err(err) =
-                        self.port
-                            .connect(&PathBuf::from(&port_name), self.baudrate, self.timeout)
+                    if let Err(err) = self
+                        .port
+                        .connect_and_authenticate(
+                            &PathBuf::from(&port_name),
+                            self.baudrate,
+                            self.timeout,
+                        )
+                        .await
                     {
                         debug!("Error connecting to given port {port_name}: {err}");
                     }
                 }
-
-                send_after(
-                    Duration::from_millis(1),
-                    handle.clone(),
-                    Self::CastMsg::Fetch,
-                );
+                send_after(Duration::from_secs(1), handle.clone(), Self::CastMsg::Fetch);
             }
             InMessage::Fetch => {
                 if !self.port.is_connected() {
@@ -110,7 +116,7 @@ impl GenServer for SerialPortState {
     }
 
     async fn handle_call(
-        self,
+        mut self,
         message: Self::CallMsg,
         _handle: &GenServerHandle<Self>,
     ) -> CallResponse<Self> {
@@ -118,6 +124,13 @@ impl GenServer for SerialPortState {
             Self::CallMsg::PortName => {
                 let pn = self.port.name.clone();
                 CallResponse::Reply(self, OutMessage::PortName(pn))
+            }
+            Self::CallMsg::Shutdown => {
+                self.shutdown = true;
+                if let Err(err) = self.port.disconnect().await {
+                    debug!("Error disconnecting serial port: {err}");
+                }
+                CallResponse::Reply(self, OutMessage::Done)
             }
         }
     }

@@ -31,7 +31,9 @@ pub async fn controller_start(
     debug!("Starting controller");
     let controller_clone = controller.inner().clone();
     let app_clone = app.clone();
-    tokio::spawn(async move { background_loop(app_clone, controller_clone).await });
+    let jh: tokio::task::JoinHandle<Result<(), ControllerError>> =
+        tokio::spawn(async move { background_loop(app_clone, controller_clone).await });
+    controller.lock().await.backgroung_join_handle = Some(jh);
     Ok(())
 }
 

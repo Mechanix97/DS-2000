@@ -17,6 +17,7 @@ pub enum InCallMessage {
     DiscordStatus,
     AccessToken,
     RefreshToken,
+    Shutdown,
 }
 
 #[derive(Clone)]
@@ -51,6 +52,7 @@ pub struct DiscordState {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
+    pub shutdown: bool,
 }
 
 impl DiscordState {
@@ -72,6 +74,7 @@ impl DiscordState {
             access_token,
             refresh_token,
             voice_setting,
+            shutdown: false,
         }
     }
 
@@ -106,6 +109,9 @@ impl GenServer for DiscordState {
         message: Self::CastMsg,
         handle: &GenServerHandle<Self>,
     ) -> CastResponse<Self> {
+        if self.shutdown {
+            return CastResponse::NoReply(self);
+        }
         match message {
             Self::CastMsg::Fetch => {
                 match self.ipc_client.state {
@@ -248,7 +254,7 @@ impl GenServer for DiscordState {
     }
 
     async fn handle_call(
-        self,
+        mut self,
         message: Self::CallMsg,
         _handle: &GenServerHandle<Self>,
     ) -> CallResponse<Self> {
@@ -264,6 +270,11 @@ impl GenServer for DiscordState {
             Self::CallMsg::RefreshToken => {
                 let rt = self.refresh_token.clone();
                 CallResponse::Reply(self, OutMessage::RefreshToken(rt))
+            }
+            Self::CallMsg::Shutdown => {
+                self.shutdown = true;
+                self.ipc_client.disconnect().await;
+                CallResponse::Reply(self, OutMessage::Done)
             }
         }
     }

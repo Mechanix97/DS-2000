@@ -62,7 +62,6 @@ impl Config {
             loop {
                 sleep(Duration::from_secs(CONFIG_SAVE_INTERVAL)).await;
                 if refresh_clone.load(atomic::Ordering::Relaxed) {
-                    debug!("Saving configuration to file");
                     save_inner(inner_clone.clone()).await;
                     refresh_clone.store(false, atomic::Ordering::Relaxed);
                 }
@@ -176,6 +175,7 @@ impl Config {
 }
 
 async fn save_inner(inner: Arc<Mutex<ConfigInfo>>) {
+    debug!("Saving configuration to file");
     if let Some(base_dirs) = BaseDirs::new() {
         let appdata_path = base_dirs.config_dir().join("Mechardo");
         if !appdata_path.exists() {

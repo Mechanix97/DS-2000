@@ -109,6 +109,14 @@ impl DiscordWorker {
         };
         Ok(rt)
     }
+
+    pub async fn shutdown(&mut self) -> Result<(), DiscordError> {
+        self.discord_handler
+            .call(InCallMessage::Shutdown)
+            .await
+            .map_err(|e| DiscordError::GenServerError(e))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

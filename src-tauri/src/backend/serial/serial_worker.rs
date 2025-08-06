@@ -40,4 +40,13 @@ impl SerialWorker {
         };
         Ok(rt)
     }
+
+    pub async fn shutdown(&mut self) -> Result<(), SerialPortError> {
+        debug!("Shutting down serial worker");
+        self.serial_port_handler
+            .call(InCallMessage::Shutdown)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        Ok(())
+    }
 }

@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use serial2_tokio::SerialPort;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 use tokio_util::codec::Framed;
@@ -43,8 +44,8 @@ impl Port {
         }
         match SerialPort::open(port_name.clone(), baudrate) {
             Ok(p) => {
-                p.set_dtr(true).unwrap();
-                p.set_rts(true).unwrap();
+                p.set_dtr(true)?;
+                p.set_rts(true)?;
 
                 let framed = Framed::new(p, SerialMessageCodec);
                 self.framed = Some(Arc::new(Mutex::new(framed)));
@@ -54,14 +55,18 @@ impl Port {
 
                 Ok(())
             }
-            Err(_) => Err(SerialPortError::PortNotAvailable),
+            Err(err) => {
+                debug!("PortNotAvailable: {err}");
+                Err(SerialPortError::PortNotAvailable)
+            }
         }
     }
 
     pub async fn disconnect(&mut self) -> Result<(), SerialPortError> {
         if let Some(framed_mutex) = &self.framed {
             let mut framed = framed_mutex.lock().await;
-            let _ = framed.flush().await;
+            let port = framed.get_mut();
+            port.flush().await?;
             drop(framed);
         }
         if self.connected {
@@ -94,17 +99,12 @@ impl Port {
         available_ports.sort();
         for p in available_ports {
             debug!("Trying to connect to port {:?}", p);
-            if let Err(err) = self.connect(&p, baudrate, timeout) {
+
+            if let Err(err) = self.connect_and_authenticate(&p, baudrate, timeout).await {
                 debug!("{:?}", err);
                 continue;
             }
-            if let Err(err) = self.authenticate().await {
-                debug!("Disconnecting from port {:?}", p);
-                self.disconnect().await.map_err(|_| err)?;
-                continue;
-            }
-            self.connected = true;
-            info!("Serial port {p:?} connected");
+
             return Ok(());
         }
         Err(SerialPortError::PortNotConnected)
@@ -126,6 +126,23 @@ impl Port {
                 Err(SerialPortError::AuthenticationFailed)
             }
         }
+    }
+
+    pub async fn connect_and_authenticate(
+        &mut self,
+        port_name: &PathBuf,
+        baudrate: u32,
+        timeout: Duration,
+    ) -> Result<(), SerialPortError> {
+        self.connect(&port_name, baudrate, timeout)?;
+
+        if let Err(err) = self.authenticate().await {
+            self.disconnect().await?;
+            return Err(err);
+        }
+        self.connected = true;
+        info!("Serial port {port_name:?} connected");
+        Ok(())
     }
 
     pub fn is_connected(&self) -> bool {
@@ -168,6 +185,7 @@ mod test {
     use crate::serial_message::SerialMessage;
 
     use tokio::time::Duration;
+    use tokio::time::sleep;
 
     #[tokio::test]
     pub async fn test_auto_connect() {
@@ -201,5 +219,33 @@ mod test {
         assert_eq!(pong, SerialMessage::Pong(PongMessage {}));
 
         port.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    pub async fn test_disconnect() {
+        let mut port = Port::new();
+        match port.auto_connect(115200, Duration::from_millis(1000)).await {
+            Err(e) => eprintln!("Error: {:?}", e),
+            Ok(_) => {}
+        }
+
+        assert!(port.is_connected());
+
+        port.disconnect().await.unwrap();
+        sleep(Duration::from_millis(1000)).await;
+
+        assert!(!port.is_connected());
+
+        match port.auto_connect(115200, Duration::from_millis(1000)).await {
+            Err(e) => eprintln!("Error: {:?}", e),
+            Ok(_) => {}
+        }
+
+        assert!(port.is_connected());
+
+        port.disconnect().await.unwrap();
+        sleep(Duration::from_millis(1000)).await;
+
+        assert!(!port.is_connected());
     }
 }
