@@ -28,7 +28,7 @@ pub async fn controller_start(
     app: AppHandle,
     controller: State<'_, Arc<Mutex<Controller>>>,
 ) -> Result<(), &'static str> {
-    debug!("controller start");
+    debug!("Starting controller");
     let controller_clone = controller.inner().clone();
     let app_clone = app.clone();
     tokio::spawn(async move { background_loop(app_clone, controller_clone).await });

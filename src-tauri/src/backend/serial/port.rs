@@ -100,6 +100,7 @@ impl Port {
             }
             self.connected = true;
             info!("Port {p:?} authentication succeded");
+            return Ok(());
         }
         Err(SerialPortError::PortNotConnected)
     }

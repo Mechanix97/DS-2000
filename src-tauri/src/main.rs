@@ -9,6 +9,12 @@ use tracing::info;
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    info!("App started");
+
     let controller = Arc::new(Mutex::new(Controller::new().await));
     controller
         .lock()
@@ -16,12 +22,6 @@ async fn main() {
         .start()
         .await
         .expect("Controller couldn't start");
-
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
-    info!("App started");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

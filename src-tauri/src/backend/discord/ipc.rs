@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 #[cfg(windows)]
 use tokio::sync::Mutex;
+use tracing::info;
 
 use tokio::io::AsyncWriteExt;
 #[cfg(windows)]
@@ -269,6 +270,7 @@ impl IpcClient {
             return Err(DiscordError::AuthenticationFailed);
         }
 
+        info!("Discord connected");
         self.state = DiscordConnectionState::Authenticated;
         Ok(())
     }
