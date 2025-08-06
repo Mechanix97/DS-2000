@@ -22,7 +22,8 @@
   "plugins": {
     "shell": {
       "open": true
-    }
+    },
+    "system-tray": {}
   },
   "bundle": {
     "icon": [

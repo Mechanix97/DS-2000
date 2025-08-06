@@ -14,7 +14,7 @@ name = "DS-2000"
 build = "build.rs"
 
 [dependencies]
-tauri = { version = "2.4", features = [] }
+tauri = { version = "2.4", features = ["tray-icon"] }
 controller = { path = "src/controller" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
