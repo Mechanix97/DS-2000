@@ -1,18 +1,18 @@
 use crate::error::ControllerError;
 
-use config::*;
+use config::config::Config;
 use discord::discord_worker::DiscordWorker;
 use serial::serial_worker::SerialWorker;
 
 pub struct Controller {
     pub discord_worker: DiscordWorker,
     pub serial_worker: SerialWorker,
-    pub config: DSConfig,
+    pub config: Config,
 }
 
 impl Controller {
     pub async fn new() -> Self {
-        let mut config = DSConfig::new();
+        let mut config = Config::new();
         config.load();
 
         let discord_worker = DiscordWorker::new(
