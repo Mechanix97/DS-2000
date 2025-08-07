@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use controller::commands;
 use controller::controller::Controller;
 use std::sync::Arc;
@@ -7,7 +9,6 @@ use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 
-#[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -27,6 +28,12 @@ async fn main() {
         .expect("Controller couldn't start");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let window = app.get_webview_window("main").expect("no main window");
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }))
         .plugin(tauri_plugin_shell::init())
         .manage(controller.clone())
         .manage(shutdown_complete.clone())
