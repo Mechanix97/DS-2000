@@ -63,11 +63,11 @@ async fn background_loop(
 
         if voice_settings != discord_voice_settings {
             debug!("Voice settings change detected:");
+            voice_settings = discord_voice_settings;
             debug!(
                 "Mute: {} Deafen: {}",
                 voice_settings.mute, voice_settings.deafen
             );
-            voice_settings = discord_voice_settings;
             // controller_lock
             //     .serial_worker
             //     .set_voice_settings(voice_settings.mute, voice_settings.deafen);

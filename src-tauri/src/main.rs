@@ -45,7 +45,7 @@ async fn main() {
         .setup(|app| {
             let quit_i = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Abrir DS2000", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_i, &show_i])?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
             TrayIconBuilder::new()
                 .menu(&menu)

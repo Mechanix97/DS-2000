@@ -27,7 +27,7 @@
   },
   "bundle": {
     "icon": [
-      "icons/icon.ico"
+      "icons/ds2000-logo.ico"
     ],
     "targets": [
       "msi"
