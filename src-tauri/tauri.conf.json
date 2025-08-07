@@ -22,11 +22,12 @@
   "plugins": {
     "shell": {
       "open": true
-    }
+    },
+    "system-tray": {}
   },
   "bundle": {
     "icon": [
-      "icons/icon.ico"
+      "icons/ds2000-logo.ico"
     ],
     "targets": [
       "msi"

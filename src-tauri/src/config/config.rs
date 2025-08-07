@@ -1,10 +1,11 @@
+use crate::secrets::{DEFAULT_REDIRECT_URL, DISCORD_CLIENT_ID, DISCORD_SECRET_KEY, ENCRYPTION_KEY};
+
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use directories::BaseDirs;
 use hex::decode;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::env::var;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -15,7 +16,6 @@ use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 use tracing::debug;
 
-const DEFAULT_REDIRECT_URL: &str = "https://www.mechardo3d.xyz/";
 const CONFIG_SAVE_INTERVAL: u64 = 60;
 
 pub struct Config {
@@ -36,10 +36,9 @@ struct ConfigInfo {
 
 impl Config {
     pub fn new() -> Self {
-        // dotenvy::from_path(Path::new(ENV_FILEPATH)).unwrap();
         let config_info = ConfigInfo {
-            discord_client_id: "".to_string(),
-            discord_secret_key: "".to_string(),
+            discord_client_id: DISCORD_CLIENT_ID.to_string(),
+            discord_secret_key: DISCORD_SECRET_KEY.to_string(),
             redirect_url: DEFAULT_REDIRECT_URL.to_string(),
             discord_access_token: None,
             discord_refresh_token: None,
@@ -93,8 +92,7 @@ impl Config {
                         file.read_to_end(&mut ciphertext)
                             .expect("Failed to read ciphertext");
 
-                        let key_hex =
-                            var("ENCRYPTION_KEY").expect("Missing ENCRYPTION_KEY in environment");
+                        let key_hex = ENCRYPTION_KEY.to_string();
                         let key_bytes =
                             decode(key_hex).expect("Invalid hex format in ENCRYPTION_KEY");
                         let key: [u8; 32] =
@@ -108,10 +106,8 @@ impl Config {
 
                         *lock = serde_json::from_slice(&decrypted).expect("Failed to parse JSON");
 
-                        lock.discord_client_id = var("DISCORD_CLIENT_ID").unwrap_or("".to_string());
-
-                        lock.discord_secret_key =
-                            var("DISCORD_SECRET_KEY").unwrap_or("".to_string());
+                        lock.discord_client_id = DISCORD_CLIENT_ID.to_string();
+                        lock.discord_secret_key = DISCORD_SECRET_KEY.to_string();
                     }
                     Err(_) => {
                         self.save().await;
@@ -184,13 +180,12 @@ async fn save_inner(inner: Arc<Mutex<ConfigInfo>>) {
 
         let mut lock = inner.lock().await;
 
-        lock.discord_client_id = var("DISCORD_CLIENT_ID").unwrap_or("".to_string());
-
-        lock.discord_secret_key = var("DISCORD_SECRET_KEY").unwrap_or("".to_string());
+        lock.discord_client_id = DISCORD_CLIENT_ID.to_string();
+        lock.discord_secret_key = DISCORD_SECRET_KEY.to_string();
 
         let json = serde_json::to_string_pretty(&*lock).unwrap();
 
-        let key_hex = var("ENCRYPTION_KEY").expect("Missing ENCRYPTION_KEY in environment");
+        let key_hex = ENCRYPTION_KEY.to_string();
         let key_bytes = decode(key_hex).expect("Invalid hex format in ENCRYPTION_KEY");
         let key: [u8; 32] = key_bytes.try_into().expect("Key must be exactly 32 bytes");
         let cipher = Aes256Gcm::new_from_slice(&key).expect("Failed to create cipher");
