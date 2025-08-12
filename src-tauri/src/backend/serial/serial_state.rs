@@ -22,6 +22,7 @@ pub enum InCallMessage {
     PortName,
     Shutdown,
     PendingMessages,
+    SerialPortStatus,
 }
 
 #[derive(Clone)]
@@ -36,6 +37,7 @@ pub enum OutMessage {
     Done,
     PortName(Option<String>),
     PendingMessages(Vec<SerialMessage>),
+    SerialPortStatus(bool),
 }
 
 #[derive(Clone)]
@@ -174,6 +176,10 @@ impl GenServer for SerialPortState {
                 let pending = self.message_queue.drain(0..).collect::<Vec<_>>();
 
                 CallResponse::Reply(self, OutMessage::PendingMessages(pending))
+            }
+            Self::CallMsg::SerialPortStatus => {
+                let st = self.port.is_connected();
+                CallResponse::Reply(self, OutMessage::SerialPortStatus(st))
             }
         }
     }

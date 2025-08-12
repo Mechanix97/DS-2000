@@ -12,7 +12,7 @@ const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
 const DISCORD_VOICE_SETTINGS_EVENT: &str = "DISCORD_VOICE_SETTINGS_EVENT";
 const SERIAL_CONNECTION_STATUS_EVENT: &str = "SERIAL_CONNECTION_STATUS_EVENT";
 
-const PERIODICAL_SERIAL_UPDATE: Duration = Duration::from_millis(250);
+const PERIODICAL_SERIAL_UPDATE: Duration = Duration::from_millis(100);
 
 #[tauri::command]
 pub async fn ds_set_voice_settings_command(
@@ -65,25 +65,18 @@ async fn background_loop(
         }
         app.emit(DISCORD_CONNECTION_STATUS_EVENT, "true")?;
 
-        // if !controller_lock.serial_worker.is_connected().await? {
-        //     app.emit(SERIAL_CONNECTION_STATUS_EVENT, "false")?;
-        // }
-        // app.emit(SERIAL_CONNECTION_STATUS_EVENT, "true")?;
+        if !controller_lock.serial_worker.is_connected().await? {
+            app.emit(SERIAL_CONNECTION_STATUS_EVENT, "false")?;
+        } else {
+            app.emit(SERIAL_CONNECTION_STATUS_EVENT, "true")?;
 
-        let discord_voice_settings = controller_lock.discord_worker.get_voice_settings().await;
-
-        if voice_settings != discord_voice_settings {
-            debug!("Voice settings change detected:");
-            voice_settings = discord_voice_settings;
-            debug!(
-                "Mute: {} Deafen: {}",
-                voice_settings.mute, voice_settings.deafen
-            );
-            controller_lock
-                .serial_worker
-                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
-                .await?;
-            app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
+            if SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE {
+                last_serial_update = SystemTime::now();
+                controller_lock
+                    .serial_worker
+                    .set_voice_settings(voice_settings.mute, voice_settings.deafen)
+                    .await?;
+            }
         }
 
         let pending_serial_messages = controller_lock.serial_worker.get_pending_messages().await?;
@@ -122,12 +115,20 @@ async fn background_loop(
             }
         }
 
-        if SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE {
-            last_serial_update = SystemTime::now();
-            controller_lock
-                .serial_worker
-                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
-                .await?;
+        let discord_voice_settings = controller_lock.discord_worker.get_voice_settings().await;
+
+        if voice_settings != discord_voice_settings {
+            debug!("Voice settings change detected:");
+            voice_settings = discord_voice_settings;
+            debug!(
+                "Mute: {} Deafen: {}",
+                voice_settings.mute, voice_settings.deafen
+            );
+            // controller_lock
+            //     .serial_worker
+            //     .set_voice_settings(voice_settings.mute, voice_settings.deafen)
+            //     .await?;
+            app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
         }
 
         // Store configs

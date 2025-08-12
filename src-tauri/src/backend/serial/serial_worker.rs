@@ -66,12 +66,26 @@ impl SerialWorker {
         Ok(())
     }
 
+    pub async fn is_connected(&mut self) -> Result<bool, SerialPortError> {
+        let om: OutMessage = self
+            .serial_port_handler
+            .call(InCallMessage::SerialPortStatus)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        if let OutMessage::SerialPortStatus(st) = om {
+            return Ok(st);
+        }
+        Ok(false)
+    }
+
     pub async fn shutdown(&mut self) -> Result<(), SerialPortError> {
         debug!("Shutting down serial worker");
         self.serial_port_handler
             .call(InCallMessage::Shutdown)
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(|e: spawned_concurrency::error::GenServerError| {
+                SerialPortError::GenServerError(e)
+            })?;
         Ok(())
     }
 }
