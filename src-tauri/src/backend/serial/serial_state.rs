@@ -140,15 +140,17 @@ impl GenServer for SerialPortState {
                 );
             }
             InMessage::SetVoiceSettings(mute, deafen) => {
-                if let Err(err) = self
-                    .port
-                    .send_message(&SerialMessage::VoiceSettings(VoiceSettingsMessage {
-                        mute,
-                        deafen,
-                    }))
-                    .await
-                {
-                    debug!("Error sending voice settings msg: {err}");
+                if self.port.is_connected() {
+                    if let Err(err) = self
+                        .port
+                        .send_message(&SerialMessage::VoiceSettings(VoiceSettingsMessage {
+                            mute,
+                            deafen,
+                        }))
+                        .await
+                    {
+                        debug!("Error sending voice settings msg: {err}");
+                    }
                 }
             }
         }
