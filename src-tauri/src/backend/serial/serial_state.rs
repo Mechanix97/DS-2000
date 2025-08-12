@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::messages::voice_settings::VoiceSettingsMessage;
 use crate::port::Port;
 use crate::{error::SerialPortError, serial_message::SerialMessage};
 
@@ -27,6 +28,7 @@ pub enum InCallMessage {
 pub enum InMessage {
     Fetch,
     Start(Option<String>),
+    SetVoiceSettings(bool, bool),
 }
 
 #[derive(Clone, PartialEq)]
@@ -134,6 +136,18 @@ impl GenServer for SerialPortState {
                     handle.clone(),
                     Self::CastMsg::Fetch,
                 );
+            }
+            InMessage::SetVoiceSettings(mute, deafen) => {
+                if let Err(err) = self
+                    .port
+                    .send_message(&SerialMessage::VoiceSettings(VoiceSettingsMessage {
+                        mute,
+                        deafen,
+                    }))
+                    .await
+                {
+                    debug!("Error sending voice settings msg: {err}");
+                }
             }
         }
         CastResponse::NoReply(self)

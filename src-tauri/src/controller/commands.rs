@@ -2,14 +2,17 @@ use crate::{controller::Controller, error::ControllerError};
 
 use serial::messages::button::Button;
 use serial::serial_message::SerialMessage;
-use std::sync::Arc;
-
+use std::time::SystemTime;
+use std::{sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::debug;
 
 const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
 const DISCORD_VOICE_SETTINGS_EVENT: &str = "DISCORD_VOICE_SETTINGS_EVENT";
+const SERIAL_CONNECTION_STATUS_EVENT: &str = "SERIAL_CONNECTION_STATUS_EVENT";
+
+const PERIODICAL_SERIAL_UPDATE: Duration = Duration::from_millis(250);
 
 #[tauri::command]
 pub async fn ds_set_voice_settings_command(
@@ -50,6 +53,7 @@ async fn background_loop(
         .discord_worker
         .get_voice_settings()
         .await;
+    let mut last_serial_update = SystemTime::now();
 
     debug!("Starting background loop");
 
@@ -59,8 +63,12 @@ async fn background_loop(
         if !controller_lock.discord_worker.is_connected().await? {
             app.emit(DISCORD_CONNECTION_STATUS_EVENT, "false")?;
         }
-
         app.emit(DISCORD_CONNECTION_STATUS_EVENT, "true")?;
+
+        // if !controller_lock.serial_worker.is_connected().await? {
+        //     app.emit(SERIAL_CONNECTION_STATUS_EVENT, "false")?;
+        // }
+        // app.emit(SERIAL_CONNECTION_STATUS_EVENT, "true")?;
 
         let discord_voice_settings = controller_lock.discord_worker.get_voice_settings().await;
 
@@ -71,9 +79,10 @@ async fn background_loop(
                 "Mute: {} Deafen: {}",
                 voice_settings.mute, voice_settings.deafen
             );
-            // controller_lock
-            //     .serial_worker
-            //     .set_voice_settings(voice_settings.mute, voice_settings.deafen);
+            controller_lock
+                .serial_worker
+                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
+                .await?;
             app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
         }
 
@@ -81,8 +90,6 @@ async fn background_loop(
 
         for pending_message in pending_serial_messages {
             match pending_message {
-                SerialMessage::Ping(_msg) => {}
-                SerialMessage::Pong(_msg) => {}
                 SerialMessage::Button(msg) => match msg.button {
                     Button::MuteButton => {
                         voice_settings.mute = !voice_settings.mute;
@@ -93,6 +100,7 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
+                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
                     }
                     Button::DeafenButton => {
                         voice_settings.deafen = !voice_settings.deafen;
@@ -103,14 +111,26 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
+                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
                     }
                     Button::DisconnectButton => {
                         controller_lock.discord_worker.disconnect().await?;
                     }
                 },
+                _ => { //TODO handle other msgs
+                }
             }
         }
 
+        if SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE {
+            last_serial_update = SystemTime::now();
+            controller_lock
+                .serial_worker
+                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
+                .await?;
+        }
+
+        // Store configs
         let access_token = controller_lock.discord_worker.get_access_token().await?;
         let refresh_token = controller_lock.discord_worker.get_refresh_token().await?;
 

@@ -2,6 +2,7 @@ use thiserror::Error;
 
 use discord::error::DiscordError;
 use serial::error::SerialPortError;
+use std::time::SystemTimeError;
 
 #[derive(Error, Debug)]
 pub enum ControllerError {
@@ -16,4 +17,7 @@ pub enum ControllerError {
 
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
+
+    #[error("Error in system time: {0}")]
+    SystemTimeError(#[from] SystemTimeError),
 }

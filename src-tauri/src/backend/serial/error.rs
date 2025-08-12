@@ -79,4 +79,7 @@ impl From<SerialMessageError> for SerialPortError {
 pub enum SerialMessageError {
     #[error("Error malformed data")]
     MalformedData,
+
+    #[error("Error invalid message length")]
+    InvalidMessageLength,
 }

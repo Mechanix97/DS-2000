@@ -54,6 +54,18 @@ impl SerialWorker {
         Ok(pm)
     }
 
+    pub async fn set_voice_settings(
+        &mut self,
+        mute: bool,
+        deafen: bool,
+    ) -> Result<(), SerialPortError> {
+        self.serial_port_handler
+            .cast(InMessage::SetVoiceSettings(mute, deafen))
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        Ok(())
+    }
+
     pub async fn shutdown(&mut self) -> Result<(), SerialPortError> {
         debug!("Shutting down serial worker");
         self.serial_port_handler
