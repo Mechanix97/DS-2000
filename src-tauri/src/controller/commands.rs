@@ -1,6 +1,9 @@
 use crate::{controller::Controller, error::ControllerError};
 
+use serial::messages::button::Button;
+use serial::serial_message::SerialMessage;
 use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -72,6 +75,40 @@ async fn background_loop(
             //     .serial_worker
             //     .set_voice_settings(voice_settings.mute, voice_settings.deafen);
             app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
+        }
+
+        let pending_serial_messages = controller_lock.serial_worker.get_pending_messages().await?;
+
+        for pending_message in pending_serial_messages {
+            match pending_message {
+                SerialMessage::Ping(_msg) => {}
+                SerialMessage::Pong(_msg) => {}
+                SerialMessage::Button(msg) => match msg.button {
+                    Button::MuteButton => {
+                        voice_settings.mute = !voice_settings.mute;
+                        controller_lock
+                            .discord_worker
+                            .set_voice_settings(
+                                voice_settings.mute || voice_settings.deafen,
+                                voice_settings.deafen,
+                            )
+                            .await?;
+                    }
+                    Button::DeafenButton => {
+                        voice_settings.deafen = !voice_settings.deafen;
+                        controller_lock
+                            .discord_worker
+                            .set_voice_settings(
+                                voice_settings.mute || voice_settings.deafen,
+                                voice_settings.deafen,
+                            )
+                            .await?;
+                    }
+                    Button::DisconnectButton => {
+                        controller_lock.discord_worker.disconnect().await?;
+                    }
+                },
+            }
         }
 
         let access_token = controller_lock.discord_worker.get_access_token().await?;

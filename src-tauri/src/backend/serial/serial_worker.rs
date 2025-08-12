@@ -1,4 +1,5 @@
 use crate::error::SerialPortError;
+use crate::serial_message::SerialMessage;
 use crate::serial_state::InCallMessage;
 use crate::serial_state::InMessage;
 use crate::serial_state::OutMessage;
@@ -39,6 +40,18 @@ impl SerialWorker {
             return Ok(None);
         };
         Ok(rt)
+    }
+
+    pub async fn get_pending_messages(&mut self) -> Result<Vec<SerialMessage>, SerialPortError> {
+        let om: OutMessage = self
+            .serial_port_handler
+            .call(InCallMessage::PendingMessages)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        let OutMessage::PendingMessages(pm) = om else {
+            return Ok(vec![]);
+        };
+        Ok(pm)
     }
 
     pub async fn shutdown(&mut self) -> Result<(), SerialPortError> {
