@@ -2,10 +2,11 @@ use crate::{controller::Controller, error::ControllerError};
 
 use serial::messages::button::Button;
 use serial::serial_message::SerialMessage;
+use std::sync::Arc;
 use std::time::SystemTime;
-use std::{sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use tokio::time::{Duration, sleep};
 use tracing::debug;
 
 const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
@@ -145,5 +146,7 @@ async fn background_loop(
             .config
             .update_last_used_port(last_port_used)
             .await;
+
+        sleep(Duration::from_millis(100)).await;
     }
 }

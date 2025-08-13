@@ -12,7 +12,7 @@ use tokio::time::Duration;
 use tracing::debug;
 use tracing::info;
 
-const SERIAL_FETCH_INTERVAL: u64 = 50; //millis
+const SERIAL_FETCH_INTERVAL: u64 = 250; //millis
 const SERIAL_AUTOCONNECT_INTERVAL: u64 = 15; //secs
 
 pub type SerialPortHandler = GenServerHandle<SerialPortState>;
