@@ -1,16 +1,19 @@
 use std::path::PathBuf;
 
-use crate::error::SerialPortError;
+use crate::messages::voice_settings::VoiceSettingsMessage;
 use crate::port::Port;
+use crate::{error::SerialPortError, serial_message::SerialMessage};
 
 use spawned_concurrency::tasks::{
     CallResponse, CastResponse, GenServer, GenServerHandle, send_after,
 };
+use std::collections::VecDeque;
 use tokio::time::Duration;
 use tracing::debug;
+use tracing::info;
 
-const SERIAL_FETCH_INTERVAL: u64 = 50; //millis
-const SERIAL_AUTOCONNECT_INTERVAL: u64 = 30; //secs
+const SERIAL_FETCH_INTERVAL: u64 = 250; //millis
+const SERIAL_AUTOCONNECT_INTERVAL: u64 = 15; //secs
 
 pub type SerialPortHandler = GenServerHandle<SerialPortState>;
 
@@ -18,18 +21,23 @@ pub type SerialPortHandler = GenServerHandle<SerialPortState>;
 pub enum InCallMessage {
     PortName,
     Shutdown,
+    PendingMessages,
+    SerialPortStatus,
 }
 
 #[derive(Clone)]
 pub enum InMessage {
     Fetch,
     Start(Option<String>),
+    SetVoiceSettings(bool, bool),
 }
 
 #[derive(Clone, PartialEq)]
 pub enum OutMessage {
     Done,
     PortName(Option<String>),
+    PendingMessages(Vec<SerialMessage>),
+    SerialPortStatus(bool),
 }
 
 #[derive(Clone)]
@@ -40,6 +48,7 @@ pub struct SerialPortState {
     baudrate: u32,
     timeout: Duration,
     shutdown: bool,
+    message_queue: VecDeque<SerialMessage>,
 }
 
 impl SerialPortState {
@@ -51,6 +60,7 @@ impl SerialPortState {
             baudrate,
             timeout,
             shutdown: false,
+            message_queue: VecDeque::new(),
         }
     }
 
@@ -105,11 +115,43 @@ impl GenServer for SerialPortState {
                     }
                 }
 
+                loop {
+                    match self.port.read_message(Duration::from_millis(100)).await {
+                        Ok(msg) => {
+                            info!("message received: {msg:?}");
+                            self.message_queue.push_back(msg);
+                        }
+                        Err(err) => {
+                            if err == SerialPortError::TimedOut {
+                                break;
+                            }
+                            if let Err(err) = self.port.disconnect().await {
+                                debug!("Error disconnecting port {err}");
+                            }
+                            break;
+                        }
+                    }
+                }
+
                 send_after(
                     Duration::from_millis(self.fetch_interval_ms),
                     handle.clone(),
                     Self::CastMsg::Fetch,
                 );
+            }
+            InMessage::SetVoiceSettings(mute, deafen) => {
+                if self.port.is_connected() {
+                    if let Err(err) = self
+                        .port
+                        .send_message(&SerialMessage::VoiceSettings(VoiceSettingsMessage {
+                            mute,
+                            deafen,
+                        }))
+                        .await
+                    {
+                        debug!("Error sending voice settings msg: {err}");
+                    }
+                }
             }
         }
         CastResponse::NoReply(self)
@@ -131,6 +173,15 @@ impl GenServer for SerialPortState {
                     debug!("Error disconnecting serial port: {err}");
                 }
                 CallResponse::Reply(self, OutMessage::Done)
+            }
+            Self::CallMsg::PendingMessages => {
+                let pending = self.message_queue.drain(0..).collect::<Vec<_>>();
+
+                CallResponse::Reply(self, OutMessage::PendingMessages(pending))
+            }
+            Self::CallMsg::SerialPortStatus => {
+                let st = self.port.is_connected();
+                CallResponse::Reply(self, OutMessage::SerialPortStatus(st))
             }
         }
     }

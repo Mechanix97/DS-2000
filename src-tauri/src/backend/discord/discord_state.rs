@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tracing::debug;
 
-const DISCORD_FETCH_INTERVAL: u64 = 50;
+const DISCORD_FETCH_INTERVAL: u64 = 250;
 
 pub type DiscordStateHandler = GenServerHandle<DiscordState>;
 

@@ -32,6 +32,36 @@ pub enum SerialPortError {
     GenServerError(GenServerError),
 }
 
+impl PartialEq for SerialPortError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (SerialPortError::PortNotAvailable, SerialPortError::PortNotAvailable) => true,
+            (SerialPortError::PortAlreadyConnected, SerialPortError::PortAlreadyConnected) => true,
+            (SerialPortError::PortNotConnected, SerialPortError::PortNotConnected) => true,
+            (SerialPortError::InternalChannelClosed, SerialPortError::InternalChannelClosed) => {
+                true
+            }
+            (SerialPortError::ErrorClosingThread, SerialPortError::ErrorClosingThread) => true,
+            (SerialPortError::TimedOut, SerialPortError::TimedOut) => true,
+            (SerialPortError::AuthenticationFailed, SerialPortError::AuthenticationFailed) => true,
+            (SerialPortError::ErrorReadingPort, SerialPortError::ErrorReadingPort) => true,
+            (SerialPortError::ErrorEncodingMsg(e1), SerialPortError::ErrorEncodingMsg(e2)) => {
+                e1 == e2
+            }
+            (SerialPortError::ErrorDecodingMsg(e1), SerialPortError::ErrorDecodingMsg(e2)) => {
+                e1 == e2
+            }
+            (SerialPortError::InternalError, SerialPortError::InternalError) => true,
+            // Compare IoError based on ErrorKind
+            (SerialPortError::IoError(e1), SerialPortError::IoError(e2)) => e1.kind() == e2.kind(),
+            (SerialPortError::GenServerError(_e1), SerialPortError::GenServerError(_e2)) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for SerialPortError {}
+
 impl From<std::io::Error> for SerialPortError {
     fn from(err: std::io::Error) -> Self {
         SerialPortError::IoError(err)
@@ -44,9 +74,12 @@ impl From<SerialMessageError> for SerialPortError {
     }
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 
 pub enum SerialMessageError {
     #[error("Error malformed data")]
     MalformedData,
+
+    #[error("Error invalid message length")]
+    InvalidMessageLength,
 }

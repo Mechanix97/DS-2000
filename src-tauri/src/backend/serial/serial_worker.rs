@@ -1,4 +1,5 @@
 use crate::error::SerialPortError;
+use crate::serial_message::SerialMessage;
 use crate::serial_state::InCallMessage;
 use crate::serial_state::InMessage;
 use crate::serial_state::OutMessage;
@@ -41,12 +42,50 @@ impl SerialWorker {
         Ok(rt)
     }
 
+    pub async fn get_pending_messages(&mut self) -> Result<Vec<SerialMessage>, SerialPortError> {
+        let om: OutMessage = self
+            .serial_port_handler
+            .call(InCallMessage::PendingMessages)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        let OutMessage::PendingMessages(pm) = om else {
+            return Ok(vec![]);
+        };
+        Ok(pm)
+    }
+
+    pub async fn set_voice_settings(
+        &mut self,
+        mute: bool,
+        deafen: bool,
+    ) -> Result<(), SerialPortError> {
+        self.serial_port_handler
+            .cast(InMessage::SetVoiceSettings(mute, deafen))
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        Ok(())
+    }
+
+    pub async fn is_connected(&mut self) -> Result<bool, SerialPortError> {
+        let om: OutMessage = self
+            .serial_port_handler
+            .call(InCallMessage::SerialPortStatus)
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
+        if let OutMessage::SerialPortStatus(st) = om {
+            return Ok(st);
+        }
+        Ok(false)
+    }
+
     pub async fn shutdown(&mut self) -> Result<(), SerialPortError> {
         debug!("Shutting down serial worker");
         self.serial_port_handler
             .call(InCallMessage::Shutdown)
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(|e: spawned_concurrency::error::GenServerError| {
+                SerialPortError::GenServerError(e)
+            })?;
         Ok(())
     }
 }
