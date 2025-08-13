@@ -10,8 +10,10 @@ resolver = "2"
 [package]
 version = "0.1.0"
 edition = "2024"
-name = "DS-2000"
+name = "DS2000"
 build = "build.rs"
+homepage = "https://www.mechardo3d.xyz/"
+authors = ["Mechardo Labs"]
 
 [dependencies]
 tauri = { version = "2.4", features = ["tray-icon"] }
