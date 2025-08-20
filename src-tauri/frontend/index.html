@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,51 +8,123 @@
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="backendEvents.js"></script>
 </head>
+
 <body>
     <div class="container">
-        <!-- Contenedor lateral (Sidebar + Canales + Panel de usuario) -->
-        <div class="sidebar-container">
-            <!-- Sidebar (Servidores) -->
-            <div class="sidebar">
-                <button class="server-icon" id="DS2000-button">D</button>
-                <button class="server-icon">+</button>
+        <!-- Sidebar de servidores (izquierda estrecha, altura completa) -->
+        <div class="servers-sidebar">
+            <button class="server-icon active" id="DS2000-button">D</button>
+            <button class="server-icon">+</button>
+        </div>
+
+        <!-- Panel de canales y usuario (al lado de servidores) -->
+        <div class="channels-panel">
+            <!-- Encabezado del servidor -->
+            <div class="server-header">
+                <h3>DS 2000</h3>
             </div>
 
-            <!-- Lista de canales -->
+            <!-- Lista de opciones (menú) -->
             <div class="channel-list">
-                <h3>DS 2000</h3>
                 <ul>
-                    <li># general</li>
-                    <li># memes</li>
-                    <li># música</li>
+                    <li class="menu-item active" data-tab="rgb">RGB</li>
+                    <li class="menu-item" data-tab="conexiones">Conexiones</li>
+                    <li class="menu-item" data-tab="configuraciones">Configuraciones</li>
+                    <li class="menu-item" data-tab="acerca">Acerca</li>
                 </ul>
             </div>
-            <!-- Panel de usuario -->
+
+            <!-- Panel de usuario (fijo en la parte inferior) -->
             <div class="user-panel">
                 <div class="user-avatar"></div>
                 <div class="user-info">
                     <div class="user-name">Lucas</div>
+                    <div class="user-status">En línea</div>
                 </div>
                 <div class="user-icons">
                     <div class="icon" id="mic-icon">🎤</div>
                     <div class="icon" id="headset-icon">🎧</div>
                 </div>
-            </div>            
+            </div>
         </div>
 
-        <!-- Chat -->
-        <div class="chat">
-            <div class="chat-header"># general</div>
-            <div class="chat-messages">
-                <div class="message">
-                    <span class="username">Lucas:</span> Hola, esto es un chat falso.
+        <!-- Área principal: Contenedor de pestañas -->
+        <div class="main-container">
+            <!-- Pestaña RGB (activa por defecto) -->
+            <div class="tab-content" id="rgb" style="display: block;">
+                <div class="tab-header">
+                    <h4>RGB</h4>
+                    <p>Sección para configuración de RGB.</p>
                 </div>
-                <div class="message">
-                    <span class="username">Bot:</span> ¡Bienvenido a Fake Discord!
+                <div class="tab-body">
+                    <!-- Contenido placeholder para RGB -->
+                    <p>Aquí puedes ajustar los colores RGB de tu dispositivo DS 2000.</p>
+                    <!-- Ejemplo: Podrías agregar inputs para colores, etc. -->
+                    <input type="color" value="#ff0000">
                 </div>
             </div>
-            <input type="text" class="chat-input" placeholder="Escribe un mensaje...">
+
+            <!-- Pestaña Conexiones -->
+            <div class="tab-content" id="conexiones" style="display: none;">
+                <div class="tab-header">
+                    <h4>Conexiones</h4>
+                    <p>Gestión de conexiones.</p>
+                </div>
+                <div class="tab-body">
+                    <!-- Contenido placeholder para Conexiones -->
+                    <p>Lista de conexiones activas:</p>
+                    <ul>
+                        <li>Conexión WiFi: Activa</li>
+                        <li>Bluetooth: Inactivo</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Pestaña Configuraciones -->
+            <div class="tab-content" id="configuraciones" style="display: none;">
+                <div class="tab-header">
+                    <h4>Configuraciones</h4>
+                    <p>Ajustes generales de la aplicación.</p>
+                </div>
+                <div class="tab-body">
+                    <!-- Contenido placeholder para Configuraciones -->
+                    <p>Opciones de configuración:</p>
+                    <label><input type="checkbox" checked> Modo oscuro</label><br>
+                    <label><input type="checkbox"> Notificaciones</label>
+                </div>
+            </div>
+
+            <!-- Pestaña Acerca -->
+            <div class="tab-content" id="acerca" style="display: none;">
+                <div class="tab-header">
+                    <h4>Acerca</h4>
+                    <p>Información sobre DS 2000.</p>
+                </div>
+                <div class="tab-body">
+                    <!-- Contenido placeholder para Acerca -->
+                    <p>Versión: 1.0</p>
+                    <p>Desarrollado por: Lucas</p>
+                    <p>Fecha: 2025</p>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- Script para manejar el cambio de pestañas -->
+    <script>
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                // Remover active de todos los items
+                document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+                // Agregar active al clicked
+                item.classList.add('active');
+                // Ocultar todos los contenidos
+                document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+                // Mostrar el correspondiente
+                document.getElementById(item.dataset.tab).style.display = 'block';
+            });
+        });
+    </script>
 </body>
+
 </html>
