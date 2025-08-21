@@ -166,17 +166,6 @@ body {
     gap: 8px;
 }
 
-.icon {
-    cursor: pointer;
-    font-size: 20px;
-    color: #b9bbbe;
-    transition: color 0.2s;
-}
-
-.icon:hover {
-    color: #dcddde;
-}
-
 /* Área principal: Contenedor de pestañas */
 .main-container {
     flex-grow: 1;
@@ -344,4 +333,57 @@ body {
     text-decoration: underline;
     background-color: rgba(88, 101, 242, 0.1);
     color: #7289da;
+}
+
+/* User panel icons */
+.user-icons {
+    display: flex;
+    gap: 8px;
+}
+
+.icon {
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.icon:hover {
+    background-color: rgba(0, 0, 0, 0.2);
+    /* Darken background on hover */
+}
+
+.icon svg {
+    width: 20px;
+    height: 20px;
+    fill: #b9bbbe;
+    /* Default color (light gray) */
+    transition: fill 0.2s;
+}
+
+.icon.muted svg,
+.icon.deafened svg {
+    fill: #ff0000;
+    /* Red when muted or deafened */
+}
+
+
+.icon.muted #mic-slash,
+.icon.deafened #headset-slash {
+    display: block;
+    /* Show slash when muted or deafened */
+}
+
+/* Slash styling */
+#mic-slash,
+#headset-slash {
+    stroke: #ff0000;
+    /* Red slash */
+    stroke-width: 2.5;
+    /* Slightly thicker for visibility */
+    stroke-linecap: round;
 }

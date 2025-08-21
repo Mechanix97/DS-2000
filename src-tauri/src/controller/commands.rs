@@ -94,7 +94,14 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
-                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
+                        app.emit(
+                            DISCORD_VOICE_SETTINGS_EVENT,
+                            format!(
+                                "{{\"mute\":{},\"deafen\":{}}}",
+                                voice_settings.mute || voice_settings.deafen,
+                                voice_settings.deafen,
+                            ),
+                        )?;
                     }
                     Button::DeafenButton => {
                         voice_settings.deafen = !voice_settings.deafen;
@@ -105,7 +112,14 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
-                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
+                        app.emit(
+                            DISCORD_VOICE_SETTINGS_EVENT,
+                            format!(
+                                "{{\"mute\":{},\"deafen\":{}}}",
+                                voice_settings.mute || voice_settings.deafen,
+                                voice_settings.deafen,
+                            ),
+                        )?;
                     }
                     Button::DisconnectButton => {
                         controller_lock.discord_worker.disconnect().await?;
@@ -129,7 +143,14 @@ async fn background_loop(
             //     .serial_worker
             //     .set_voice_settings(voice_settings.mute, voice_settings.deafen)
             //     .await?;
-            app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
+            app.emit(
+                DISCORD_VOICE_SETTINGS_EVENT,
+                format!(
+                    "{{\"mute\":{},\"deafen\":{}}}",
+                    voice_settings.mute || voice_settings.deafen,
+                    voice_settings.deafen,
+                ),
+            )?;
         }
 
         // Store configs

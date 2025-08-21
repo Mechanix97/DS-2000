@@ -7,20 +7,45 @@ var deaf = false;
 const micIcon = document.getElementById('mic-icon');
 const headsetIcon = document.getElementById('headset-icon');
 
+function updateIcons() {
+  // Update mic icon
+  if (mute) {
+    micIcon.classList.add('muted');
+  } else {
+    micIcon.classList.remove('muted');
+  }
+  // Update headset icon
+  if (deaf) {
+    headsetIcon.classList.add('deafened');
+  } else {
+    headsetIcon.classList.remove('deafened');
+  }
+}
+
 micIcon.addEventListener('click', () => {
   mute = !mute;
   invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
-})
+  updateIcons();
+});
 
 headsetIcon.addEventListener('click', () => {
   deaf = !deaf;
   invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
-})
+  updateIcons();
+});
 
-invoke('controller_start');
-listen('DOWNLOAD_PROGRESS', event => {
-  console.log('Evento recibido desde Rust:' + event.payload)
-})
+listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
+  try {
+    const payload = JSON.parse(event.payload);
+    mute = 'mute' in payload ? Boolean(payload.mute) : mute;
+    deaf = 'deafen' in payload ? Boolean(payload.deafen) : deaf;
+    updateIcons();
+    console.log('Variables actualizadas:', { mute, deaf });
+  } catch (error) {
+    console.error('Error al parsear el JSON:', error);
+    console.error('Payload problemático:', event.payload);
+  }
+});
 
 // Update slider values in real-time
 document.querySelectorAll('input[type="range"]').forEach(slider => {
@@ -45,3 +70,5 @@ document.getElementById('mode-selector').addEventListener('change', (event) => {
     led2Sliders.style.display = 'block';
   }
 });
+
+invoke('controller_start');
