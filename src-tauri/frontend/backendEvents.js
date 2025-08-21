@@ -14,7 +14,7 @@ const serialStatus = document.getElementById('serial-status');
 function updateIcons() {
   console.log('Updating icons:', { mute, deaf });
   // Update mic icon
-  if (mute) {
+  if (mute || deaf) {
     micIcon.classList.add('muted');
     console.log('Mic icon classList:', micIcon.classList.toString());
   } else {

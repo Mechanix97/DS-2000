@@ -148,8 +148,7 @@ async fn background_loop(
             DISCORD_VOICE_SETTINGS_EVENT,
             format!(
                 "{{\"mute\":{},\"deafen\":{}}}",
-                voice_settings.mute || voice_settings.deafen,
-                voice_settings.deafen,
+                voice_settings.mute, voice_settings.deafen,
             ),
         )?;
         sleep(Duration::from_millis(100)).await;
