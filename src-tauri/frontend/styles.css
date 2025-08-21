@@ -39,18 +39,36 @@ body {
     justify-content: center;
     margin-bottom: 8px;
     border-radius: 50%;
+    /* Circular for non-active icons */
     cursor: pointer;
     transition: border-radius 0.2s, background-color 0.2s;
+    border: none;
+    overflow: hidden;
+    /* Ensure the image doesn't overflow the button */
 }
 
 .server-icon:hover {
-    border-radius: 16px;
+    border-radius: 15px;
+    /* Rounded square for hover, Discord-like */
     background-color: #5865f2;
 }
 
 .server-icon.active {
-    border-radius: 16px;
+    border-radius: 15px;
+    /* Rounded square for active state */
     background-color: #5865f2;
+}
+
+.server-icon img,
+.server-icon svg {
+    width: 100%;
+    /* Make image fill the button */
+    height: 100%;
+    /* Ensure image scales to button size */
+    object-fit: contain;
+    /* Maintain aspect ratio without stretching */
+    display: block;
+    /* Remove any inline spacing */
 }
 
 /* Panel de canales */
