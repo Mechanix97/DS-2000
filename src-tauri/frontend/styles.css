@@ -387,3 +387,31 @@ body {
     /* Slightly thicker for visibility */
     stroke-linecap: round;
 }
+
+/* Connection status container */
+.connection-status {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Connection status text */
+.connection-status p {
+    font-size: 14px;
+    color: #dcddde;
+    /* Light gray text, matching app theme */
+    margin: 0;
+}
+
+/* Connected state */
+.connection-status .connected {
+    color: #43b581;
+    /* Discord green for connected */
+}
+
+/* Disconnected state */
+.connection-status .disconnected {
+    color: #f04747;
+    /* Discord red for disconnected */
+}
