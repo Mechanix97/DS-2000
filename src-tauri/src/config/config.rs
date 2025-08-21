@@ -1,4 +1,5 @@
 use crate::secrets::{DEFAULT_REDIRECT_URL, DISCORD_CLIENT_ID, DISCORD_SECRET_KEY, ENCRYPTION_KEY};
+use common::rgb_update::RGBConfig;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -24,7 +25,7 @@ pub struct Config {
     join_handle: Option<JoinHandle<()>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct ConfigInfo {
     pub discord_client_id: String,
     pub discord_secret_key: String,
@@ -32,6 +33,7 @@ struct ConfigInfo {
     pub discord_access_token: Option<String>,
     pub discord_refresh_token: Option<String>,
     pub last_used_port: Option<String>,
+    pub rgb_config: RGBConfig,
 }
 
 impl Config {
@@ -43,6 +45,7 @@ impl Config {
             discord_access_token: None,
             discord_refresh_token: None,
             last_used_port: None,
+            rgb_config: RGBConfig::default(),
         };
 
         Self {
@@ -104,8 +107,7 @@ impl Config {
                             .decrypt(nonce, ciphertext.as_ref())
                             .expect("Decryption failed");
 
-                        *lock = serde_json::from_slice(&decrypted).expect("Failed to parse JSON");
-
+                        *lock = serde_json::from_slice(&decrypted).unwrap_or(Default::default());
                         lock.discord_client_id = DISCORD_CLIENT_ID.to_string();
                         lock.discord_secret_key = DISCORD_SECRET_KEY.to_string();
                     }
@@ -167,6 +169,12 @@ impl Config {
             lock.last_used_port = last_used_port;
             self.refresh.store(true, atomic::Ordering::Relaxed);
         }
+    }
+
+    pub async fn update_rgb(&mut self, rgb_update: &RGBConfig) {
+        let mut lock = self.inner.lock().await;
+        lock.rgb_config = rgb_update.clone();
+        self.refresh.store(true, atomic::Ordering::Relaxed);
     }
 }
 

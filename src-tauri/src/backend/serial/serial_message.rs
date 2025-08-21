@@ -7,6 +7,7 @@ use super::error::{SerialMessageError, SerialPortError};
 use super::messages::button::ButtonMessage;
 use super::messages::ping::PingMessage;
 use super::messages::pong::PongMessage;
+use super::messages::rgb::RGBConfigMessage;
 
 pub struct SerialMessageCodec;
 
@@ -43,6 +44,7 @@ pub enum SerialMessage {
     Pong(PongMessage),
     Button(ButtonMessage),
     VoiceSettings(VoiceSettingsMessage),
+    RGBUpdate(RGBConfigMessage),
 }
 
 impl SerialMessage {
@@ -52,6 +54,7 @@ impl SerialMessage {
             SerialMessage::Pong(_) => PongMessage::CODE,
             SerialMessage::Button(_) => ButtonMessage::CODE,
             SerialMessage::VoiceSettings(_) => VoiceSettingsMessage::CODE,
+            SerialMessage::RGBUpdate(_) => RGBConfigMessage::CODE,
         }
     }
 
@@ -68,6 +71,9 @@ impl SerialMessage {
             VoiceSettingsMessage::CODE => Ok(SerialMessage::VoiceSettings(
                 VoiceSettingsMessage::decode(&data[1..])?,
             )),
+            RGBConfigMessage::CODE => Ok(SerialMessage::RGBUpdate(RGBConfigMessage::decode(
+                &data[1..],
+            )?)),
             _ => Err(SerialMessageError::MalformedData),
         }
     }
@@ -79,6 +85,7 @@ impl SerialMessage {
             SerialMessage::Pong(msg) => msg.encode(buf),
             SerialMessage::Button(msg) => msg.encode(buf),
             SerialMessage::VoiceSettings(msg) => msg.encode(buf),
+            SerialMessage::RGBUpdate(msg) => msg.encode(buf),
         }
     }
 }

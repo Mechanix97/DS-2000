@@ -1,6 +1,9 @@
+use common::rgb_update::RGBConfig;
 use std::path::PathBuf;
 
+use crate::messages::rgb::RGBConfigMessage;
 use crate::messages::voice_settings::VoiceSettingsMessage;
+
 use crate::port::Port;
 use crate::{error::SerialPortError, serial_message::SerialMessage};
 
@@ -30,6 +33,7 @@ pub enum InMessage {
     Fetch,
     Start(Option<String>),
     SetVoiceSettings(bool, bool),
+    RGBUpdate(RGBConfig),
 }
 
 #[derive(Clone, PartialEq)]
@@ -147,6 +151,17 @@ impl GenServer for SerialPortState {
                             mute,
                             deafen,
                         }))
+                        .await
+                    {
+                        debug!("Error sending voice settings msg: {err}");
+                    }
+                }
+            }
+            InMessage::RGBUpdate(update) => {
+                if self.port.is_connected() {
+                    if let Err(err) = self
+                        .port
+                        .send_message(&SerialMessage::RGBUpdate(RGBConfigMessage { update }))
                         .await
                     {
                         debug!("Error sending voice settings msg: {err}");
