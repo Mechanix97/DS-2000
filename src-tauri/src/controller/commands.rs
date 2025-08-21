@@ -44,6 +44,24 @@ pub async fn controller_start(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn serial_set_rgb(
+    mode: u8,
+    brightness: u8,
+    led1_red: u8,
+    led1_green: u8,
+    led1_blue: u8,
+    led2_red: u8,
+    led2_green: u8,
+    led2_blue: u8,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) -> Result<(), &'static str> {
+    debug!("mode: {mode}");
+    debug!("\t brightness: {brightness}");
+
+    Ok(())
+}
+
 async fn background_loop(
     app: AppHandle,
     controller: Arc<Mutex<Controller>>,

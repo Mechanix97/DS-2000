@@ -39,7 +39,8 @@ async fn main() {
         .manage(shutdown_complete.clone())
         .invoke_handler(tauri::generate_handler![
             commands::controller_start,
-            commands::ds_set_voice_settings_command
+            commands::ds_set_voice_settings_command,
+            commands::serial_set_rgb,
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

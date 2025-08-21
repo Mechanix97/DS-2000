@@ -11,23 +11,29 @@ const headsetIcon = document.getElementById('headset-icon');
 const discordStatus = document.getElementById('discord-status');
 const serialStatus = document.getElementById('serial-status');
 
+const rgbModeSelector = document.getElementById('mode-selector');
+const brightnessSlider = document.getElementById('brightness-slider');
+
+// led 1
+const led1RedSlider = document.getElementById('led1-red-slider');
+const led1GreenSlider = document.getElementById('led1-green-slider');
+const led1BlueSlider = document.getElementById('led1-blue-slider');
+
+// led 2
+const led2RedSlider = document.getElementById('led2-red-slider');
+const led2GreenSlider = document.getElementById('led2-green-slider');
+const led2BlueSlider = document.getElementById('led2-blue-slider');
+
 function updateIcons() {
-  console.log('Updating icons:', { mute, deaf });
-  // Update mic icon
   if (mute || deaf) {
     micIcon.classList.add('muted');
-    console.log('Mic icon classList:', micIcon.classList.toString());
   } else {
     micIcon.classList.remove('muted');
-    console.log('Mic icon classList:', micIcon.classList.toString());
   }
-  // Update headset icon
   if (deaf) {
     headsetIcon.classList.add('deafened');
-    console.log('Headset icon classList:', headsetIcon.classList.toString());
   } else {
     headsetIcon.classList.remove('deafened');
-    console.log('Headset icon classList:', headsetIcon.classList.toString());
   }
 }
 
@@ -54,28 +60,23 @@ function updateConnectionStatus() {
       serialStatus.classList.add('disconnected');
     }
   }
-  console.log('Connection status updated:', { discordConnected, serialConnected });
 }
 
 micIcon.addEventListener('click', () => {
   invoke('ds_set_voice_settings_command', { mute: !mute, deaf: deaf });
-  console.log('Mic clicked, new mute state:', mute);
   updateIcons();
 });
 
 headsetIcon.addEventListener('click', () => {
   invoke('ds_set_voice_settings_command', { mute: mute, deaf: !deaf });
-  console.log('Headset clicked, new deaf state:', deaf);
   updateIcons();
 });
 
 listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
   try {
-    console.log('Raw payload recibido (voice):', event.payload);
     const payload = JSON.parse(event.payload);
     mute = 'mute' in payload ? Boolean(payload.mute) : mute;
     deaf = 'deafen' in payload ? Boolean(payload.deafen) : deaf;
-    console.log('Variables actualizadas:', { mute, deaf });
     updateIcons();
   } catch (error) {
     console.error('Error al parsear el JSON (voice):', error);
@@ -84,16 +85,12 @@ listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
 });
 
 listen('DISCORD_CONNECTION_STATUS_EVENT', event => {
-  console.log('Raw payload recibido (Discord):', event.payload);
   discordConnected = event.payload === 'true';
-  console.log('Discord connection state:', discordConnected ? 'Conectado' : 'No conectado');
   updateConnectionStatus();
 });
 
 listen('SERIAL_CONNECTION_STATUS_EVENT', event => {
-  console.log('Raw payload recibido (Serial):', event.payload);
   serialConnected = event.payload === 'true';
-  console.log('Serial connection state:', serialConnected ? 'Conectado' : 'No conectado');
   updateConnectionStatus();
 });
 
@@ -107,7 +104,7 @@ document.querySelectorAll('input[type="range"]').forEach(slider => {
 });
 
 // Handle mode selector changes
-document.getElementById('mode-selector').addEventListener('change', (event) => {
+rgbModeSelector.addEventListener('change', (event) => {
   const mode = event.target.value;
   const led1Sliders = document.getElementById('rgb-sliders-led1');
   const led2Sliders = document.getElementById('rgb-sliders-led2');
@@ -119,6 +116,49 @@ document.getElementById('mode-selector').addEventListener('change', (event) => {
     led1Sliders.style.display = 'block';
     led2Sliders.style.display = 'block';
   }
+  updateRGB();
+});
+
+function updateRGB() {
+  invoke('serial_set_rgb', {
+    mode: rgbModeSelector.selectedIndex,
+    brightness: parseInt(brightnessSlider.value),
+    led1Red: parseInt(led1RedSlider.value),
+    led1Green: parseInt(led1GreenSlider.value),
+    led1Blue: parseInt(led1BlueSlider.value),
+    led2Red: parseInt(led2RedSlider.value),
+    led2Green: parseInt(led2GreenSlider.value),
+    led2Blue: parseInt(led2BlueSlider.value),
+  });
+}
+
+brightnessSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1RedSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1GreenSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1BlueSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+
+led2RedSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led2GreenSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led2BlueSlider.addEventListener('change', (event) => {
+  updateRGB();
 });
 
 invoke('controller_start');
