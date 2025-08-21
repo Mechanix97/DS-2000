@@ -4,6 +4,7 @@ members = [
     "src/backend/serial",
     "src/controller",
     "src/config",
+    "src/common",
 ]
 resolver = "2"
 
@@ -35,6 +36,7 @@ discord = { path = "src/backend/discord" }
 serial = { path = "src/backend/serial" }
 controller = { path = "src/controller" }
 config = { path = "src/config" }
+common = { path = "src/common" }
 
 tauri = { version = "2.7", features = [] }
 tauri-plugin-shell = "2.0"

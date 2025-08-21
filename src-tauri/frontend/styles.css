@@ -2,12 +2,11 @@
 body {
     margin: 0;
     padding: 0;
-    font-family: Arial, sans-serif;
+    font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
     background-color: #36393f;
-    color: white;
-    position: fixed;
-    width: 100%;
-    height: 100%;
+    color: #dcddde;
+    width: 100vw;
+    height: 100vh;
     overflow: hidden;
 }
 
@@ -17,46 +16,80 @@ body {
     height: 100%;
 }
 
-/* Sidebar (Servidores) */
-.sidebar {
-    width: 60px;
+/* Sidebar de servidores */
+.servers-sidebar {
+    width: 72px;
     background-color: #202225;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-top: 10px;
-    grid-area: 1 / 1 / 2 / 2
+    padding: 12px 0;
+    overflow-y: auto;
 }
 
 .server-icon {
-    width: 50px;
-    height: 50px;
-    background-color: #5865F2;
-    color: white;
+    width: 48px;
+    height: 48px;
+    background-color: #36393f;
+    color: #ffffff;
     font-size: 24px;
+    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     border-radius: 50%;
+    /* Circular for non-active icons */
     cursor: pointer;
+    transition: border-radius 0.2s, background-color 0.2s;
+    border: none;
+    overflow: hidden;
+    /* Ensure the image doesn't overflow the button */
 }
 
-/* Contenedor lateral */
-.sidebar-container {
-    display: grid;
-    grid-template-columns: 60px 240px;
+.server-icon:hover {
+    border-radius: 15px;
+    /* Rounded square for hover, Discord-like */
+    background-color: #5865f2;
+}
+
+.server-icon.active {
+    border-radius: 15px;
+    /* Rounded square for active state */
+    background-color: #5865f2;
+}
+
+.server-icon img,
+.server-icon svg {
+    width: 100%;
+    /* Make image fill the button */
     height: 100%;
-    grid-column-gap: 0px;
-    grid-row-gap: 0px;
-    grid-template-rows: 4fr repeat(1, 1fr);
+    /* Ensure image scales to button size */
+    object-fit: contain;
+    /* Maintain aspect ratio without stretching */
+    display: block;
+    /* Remove any inline spacing */
+}
+
+/* Panel de canales */
+.channels-panel {
+    width: 240px;
+    background-color: #2f3136;
+    display: flex;
+    flex-direction: column;
+}
+
+.server-header {
+    padding: 16px 10px 8px;
+    font-size: 16px;
+    font-weight: 600;
+    border-bottom: 1px solid #202225;
 }
 
 .channel-list {
-    padding: 10px;
-    overflow-y: auto;
     flex-grow: 1;
-    grid-area: 1 / 2 / 2 / 3; 
+    padding: 8px 8px 0;
+    overflow-y: auto;
 }
 
 .channel-list ul {
@@ -65,94 +98,320 @@ body {
     margin: 0;
 }
 
-.channel-list li {
-    padding: 10px;
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 8px;
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: 4px;
+    font-size: 15px;
+    transition: background-color 0.1s;
 }
 
-.channel-list li:hover {
-    background-color: #40444b;
+.menu-item:hover {
+    background-color: #3a3c43;
+}
+
+.menu-item.active {
+    background-color: #393c43;
+    color: #ffffff;
 }
 
 /* Panel de usuario */
 .user-panel {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     background-color: #292b2f;
-    padding: 10px;
-    gap: 10px;
+    padding: 8px 10px;
+    gap: 8px;
     border-top: 1px solid #202225;
-    width: 100%;
-    box-sizing: border-box;
-    grid-area: 2 / 1 / 3 / 3;
-} 
+}
 
 .user-avatar {
-    width: 40px;
-    height: 40px;
-    background-color: #5865F2;
+    width: 32px;
+    height: 32px;
+    background-color: #5865f2;
     border-radius: 50%;
+    position: relative;
+}
+
+.user-avatar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    background-color: #3ba55c;
+    border-radius: 50%;
+    border: 2px solid #292b2f;
 }
 
 .user-info {
     flex-grow: 1;
-    display: flex;
-    flex-direction: column;
 }
 
 .user-name {
     font-size: 14px;
-    font-weight: bold;
+    font-weight: 600;
+}
+
+.user-status {
+    font-size: 12px;
+    color: #b9bbbe;
 }
 
 .user-icons {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
-.icon {
-    cursor: pointer;
-    font-size: 18px;
-}
-
-/* Chat */
-.chat {
+/* Área principal: Contenedor de pestañas */
+.main-container {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
     background-color: #36393f;
 }
 
-.chat-header {
-    background-color: #202225;
-    padding: 15px;
-    font-weight: bold;
-    border-bottom: 1px solid #18191c;
+.tab-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-.chat-messages {
+.tab-header {
+    padding: 16px;
+    border-bottom: 1px solid #202225;
+    box-shadow: 0 1px 0 rgba(4, 4, 5, 0.2);
+}
+
+.tab-header h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.tab-header p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #8e9297;
+}
+
+.tab-body {
     flex-grow: 1;
-    padding: 15px;
+    padding: 20px;
     overflow-y: auto;
 }
 
-.message {
-    margin-bottom: 10px;
+/* Slider container */
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+    margin-right: 80px;
 }
 
-.username {
-    font-weight: bold;
+/* Slider label */
+.slider-container label {
+    width: 50px;
+    font-size: 14px;
+    color: #dcddde;
+}
+
+/* Slider input */
+.slider-container input[type="range"] {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: #2f3136;
+    border-radius: 4px;
+    outline: none;
+    transition: background 0.2s;
+}
+
+/* Slider thumb */
+.slider-container input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #5865f2;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.slider-container input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #5865f2;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* Slider value display */
+.slider-container .slider-value {
+    width: 40px;
+    text-align: right;
+    font-size: 14px;
+    color: #dcddde;
+}
+
+/* Mode selector */
+.slider-container select {
+    flex-grow: 1;
+    height: 32px;
+    background-color: #2f3136;
+    color: #dcddde;
+    border: 1px solid #202225;
+    border-radius: 4px;
+    padding: 0 8px;
+    margin-right: 180px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.slider-container select:focus {
+    outline: none;
+    background-color: #393c43;
+}
+
+/* RGB sliders section */
+.rgb-sliders {
+    margin: 10px 0;
+}
+
+.rgb-sliders h5 {
+    margin: 10px 0 5px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #dcddde;
+}
+
+.tab-body {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    /* Use flexbox for centering */
+    flex-direction: column;
+    /* Stack content vertically */
+    align-items: center;
+    /* Center content horizontally */
+}
+
+/* Container for link buttons to center them */
+.link-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.link-button {
+    padding: 8px 16px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #5865f2;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: text-decoration 0.2s, background-color 0.2s, color 0.2s;
+    width: fit-content;
+}
+
+.link-button:hover {
+    text-decoration: underline;
+    background-color: rgba(88, 101, 242, 0.1);
     color: #7289da;
 }
 
-.chat-input {
-    border: none;
-    padding: 15px;
-    background-color: #202024;
-    color: white;
-    width: 100%;
-    font-size: 16px;
-    outline: none;
+/* User panel icons */
+.user-icons {
+    display: flex;
+    gap: 8px;
+}
+
+.icon {
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.icon:hover {
+    background-color: rgba(0, 0, 0, 0.2);
+    /* Darken background on hover */
+}
+
+.icon svg {
+    width: 20px;
+    height: 20px;
+    fill: #b9bbbe;
+    /* Default color (light gray) */
+    transition: fill 0.2s;
+}
+
+.icon.muted svg,
+.icon.deafened svg {
+    fill: #ff0000;
+    /* Red when muted or deafened */
+}
+
+
+.icon.muted #mic-slash,
+.icon.deafened #headset-slash {
+    display: block;
+    /* Show slash when muted or deafened */
+}
+
+/* Slash styling */
+#mic-slash,
+#headset-slash {
+    stroke: #ff0000;
+    /* Red slash */
+    stroke-width: 2.5;
+    /* Slightly thicker for visibility */
+    stroke-linecap: round;
+}
+
+/* Connection status container */
+.connection-status {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Connection status text */
+.connection-status p {
+    font-size: 14px;
+    color: #dcddde;
+    /* Light gray text, matching app theme */
+    margin: 0;
+}
+
+/* Connected state */
+.connection-status .connected {
+    color: #43b581;
+    /* Discord green for connected */
+}
+
+/* Disconnected state */
+.connection-status .disconnected {
+    color: #f04747;
+    /* Discord red for disconnected */
 }

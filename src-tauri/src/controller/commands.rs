@@ -1,4 +1,5 @@
 use crate::{controller::Controller, error::ControllerError};
+use common::rgb_update::{LedRgb, RGBConfig, RGBMode};
 
 use serial::messages::button::Button;
 use serial::serial_message::SerialMessage;
@@ -41,6 +42,71 @@ pub async fn controller_start(
     let jh: tokio::task::JoinHandle<Result<(), ControllerError>> =
         tokio::spawn(async move { background_loop(app_clone, controller_clone).await });
     controller.lock().await.backgroung_join_handle = Some(jh);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn serial_set_rgb(
+    mode: u8,
+    brightness: u8,
+    led1_red: u8,
+    led1_green: u8,
+    led1_blue: u8,
+    led2_red: u8,
+    led2_green: u8,
+    led2_blue: u8,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) -> Result<(), &'static str> {
+    let mut update = match mode {
+        0 => RGBConfig {
+            brightness,
+            rgb_mode: RGBMode::Cycle,
+        },
+        1 => RGBConfig {
+            brightness,
+            rgb_mode: RGBMode::Fixed {
+                led1: LedRgb {
+                    red: led1_red,
+                    green: led1_green,
+                    blue: led1_blue,
+                },
+                led2: LedRgb {
+                    red: led2_red,
+                    green: led2_green,
+                    blue: led2_blue,
+                },
+            },
+        },
+
+        2 => RGBConfig {
+            brightness,
+            rgb_mode: RGBMode::Wave {
+                led1: LedRgb {
+                    red: led1_red,
+                    green: led1_green,
+                    blue: led1_blue,
+                },
+                led2: LedRgb {
+                    red: led2_red,
+                    green: led2_green,
+                    blue: led2_blue,
+                },
+            },
+        },
+        _ => {
+            return Err("Invalid RGB mode");
+        }
+    };
+    update.check_255();
+    let mut controller_lock = controller.lock().await;
+    controller_lock.config.update_rgb(&update).await;
+    controller_lock
+        .serial_worker
+        .set_rgb_config(&update)
+        .await
+        .unwrap();
+
+    debug!("RGB update: {update:?}");
     Ok(())
 }
 
@@ -94,7 +160,6 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
-                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
                     }
                     Button::DeafenButton => {
                         voice_settings.deafen = !voice_settings.deafen;
@@ -105,7 +170,6 @@ async fn background_loop(
                                 voice_settings.deafen,
                             )
                             .await?;
-                        app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
                     }
                     Button::DisconnectButton => {
                         controller_lock.discord_worker.disconnect().await?;
@@ -129,7 +193,6 @@ async fn background_loop(
             //     .serial_worker
             //     .set_voice_settings(voice_settings.mute, voice_settings.deafen)
             //     .await?;
-            app.emit(DISCORD_VOICE_SETTINGS_EVENT, "HOLA")?;
         }
 
         // Store configs
@@ -147,6 +210,13 @@ async fn background_loop(
             .update_last_used_port(last_port_used)
             .await;
 
+        app.emit(
+            DISCORD_VOICE_SETTINGS_EVENT,
+            format!(
+                "{{\"mute\":{},\"deafen\":{}}}",
+                voice_settings.mute, voice_settings.deafen,
+            ),
+        )?;
         sleep(Duration::from_millis(100)).await;
     }
 }

@@ -6,6 +6,8 @@ use crate::serial_state::OutMessage;
 use crate::serial_state::SerialPortHandler;
 use crate::serial_state::SerialPortState;
 
+use common::rgb_update::RGBConfig;
+
 use tokio::time::Duration;
 use tracing::debug;
 
@@ -86,6 +88,14 @@ impl SerialWorker {
             .map_err(|e: spawned_concurrency::error::GenServerError| {
                 SerialPortError::GenServerError(e)
             })?;
+        Ok(())
+    }
+
+    pub async fn set_rgb_config(&mut self, rgb_update: &RGBConfig) -> Result<(), SerialPortError> {
+        self.serial_port_handler
+            .cast(InMessage::RGBUpdate(rgb_update.clone()))
+            .await
+            .map_err(|e| SerialPortError::GenServerError(e))?;
         Ok(())
     }
 }

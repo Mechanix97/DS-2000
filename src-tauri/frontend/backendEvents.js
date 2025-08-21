@@ -1,30 +1,164 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-shell';
 
 var mute = false;
 var deaf = false;
+var discordConnected = false;
+var serialConnected = false;
 
 const micIcon = document.getElementById('mic-icon');
 const headsetIcon = document.getElementById('headset-icon');
-const DS2000Button = document.getElementById('DS2000-button');
+const discordStatus = document.getElementById('discord-status');
+const serialStatus = document.getElementById('serial-status');
+
+const rgbModeSelector = document.getElementById('mode-selector');
+const brightnessSlider = document.getElementById('brightness-slider');
+
+// led 1
+const led1RedSlider = document.getElementById('led1-red-slider');
+const led1GreenSlider = document.getElementById('led1-green-slider');
+const led1BlueSlider = document.getElementById('led1-blue-slider');
+
+// led 2
+const led2RedSlider = document.getElementById('led2-red-slider');
+const led2GreenSlider = document.getElementById('led2-green-slider');
+const led2BlueSlider = document.getElementById('led2-blue-slider');
+
+function updateIcons() {
+  if (mute || deaf) {
+    micIcon.classList.add('muted');
+  } else {
+    micIcon.classList.remove('muted');
+  }
+  if (deaf) {
+    headsetIcon.classList.add('deafened');
+  } else {
+    headsetIcon.classList.remove('deafened');
+  }
+}
+
+function updateConnectionStatus() {
+  // Update Discord status
+  if (discordStatus) {
+    discordStatus.classList.remove('connected', 'disconnected');
+    if (discordConnected) {
+      discordStatus.textContent = 'Discord: Conectado';
+      discordStatus.classList.add('connected');
+    } else {
+      discordStatus.textContent = 'Discord: No conectado';
+      discordStatus.classList.add('disconnected');
+    }
+  }
+  // Update Serial status
+  if (serialStatus) {
+    serialStatus.classList.remove('connected', 'disconnected');
+    if (serialConnected) {
+      serialStatus.textContent = 'Serial: Conectado';
+      serialStatus.classList.add('connected');
+    } else {
+      serialStatus.textContent = 'Serial: No conectado';
+      serialStatus.classList.add('disconnected');
+    }
+  }
+}
 
 micIcon.addEventListener('click', () => {
-  mute = !mute;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
-})
+  invoke('ds_set_voice_settings_command', { mute: !mute, deaf: deaf });
+  updateIcons();
+});
 
 headsetIcon.addEventListener('click', () => {
-  deaf = !deaf;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
-})
+  invoke('ds_set_voice_settings_command', { mute: mute, deaf: !deaf });
+  updateIcons();
+});
+
+listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
+  try {
+    const payload = JSON.parse(event.payload);
+    mute = 'mute' in payload ? Boolean(payload.mute) : mute;
+    deaf = 'deafen' in payload ? Boolean(payload.deafen) : deaf;
+    updateIcons();
+  } catch (error) {
+    console.error('Error al parsear el JSON (voice):', error);
+    console.error('Payload problemático (voice):', event.payload);
+  }
+});
+
+listen('DISCORD_CONNECTION_STATUS_EVENT', event => {
+  discordConnected = event.payload === 'true';
+  updateConnectionStatus();
+});
+
+listen('SERIAL_CONNECTION_STATUS_EVENT', event => {
+  serialConnected = event.payload === 'true';
+  updateConnectionStatus();
+});
+
+// Update slider values in real-time
+document.querySelectorAll('input[type="range"]').forEach(slider => {
+  const valueSpan = document.getElementById(slider.id.replace('slider', 'value'));
+  valueSpan.textContent = slider.value;
+  slider.addEventListener('input', () => {
+    valueSpan.textContent = slider.value;
+  });
+});
+
+// Handle mode selector changes
+rgbModeSelector.addEventListener('change', (event) => {
+  const mode = event.target.value;
+  const led1Sliders = document.getElementById('rgb-sliders-led1');
+  const led2Sliders = document.getElementById('rgb-sliders-led2');
+
+  if (mode === 'ciclar') {
+    led1Sliders.style.display = 'none';
+    led2Sliders.style.display = 'none';
+  } else {
+    led1Sliders.style.display = 'block';
+    led2Sliders.style.display = 'block';
+  }
+  updateRGB();
+});
+
+function updateRGB() {
+  invoke('serial_set_rgb', {
+    mode: rgbModeSelector.selectedIndex,
+    brightness: parseInt(brightnessSlider.value),
+    led1Red: parseInt(led1RedSlider.value),
+    led1Green: parseInt(led1GreenSlider.value),
+    led1Blue: parseInt(led1BlueSlider.value),
+    led2Red: parseInt(led2RedSlider.value),
+    led2Green: parseInt(led2GreenSlider.value),
+    led2Blue: parseInt(led2BlueSlider.value),
+  });
+}
+
+brightnessSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1RedSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1GreenSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led1BlueSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
 
 
-DS2000Button.addEventListener('click', async () => {
-  await open('https://mechardo3d.xyz');
+led2RedSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led2GreenSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+led2BlueSlider.addEventListener('change', (event) => {
+  updateRGB();
 });
 
 invoke('controller_start');
-listen('DOWNLOAD_PROGRESS', event => {
-  console.log('Evento recibido desde Rust:' + event.payload)
-})
