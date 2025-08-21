@@ -58,15 +58,13 @@ function updateConnectionStatus() {
 }
 
 micIcon.addEventListener('click', () => {
-  mute = !mute;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
+  invoke('ds_set_voice_settings_command', { mute: !mute, deaf: deaf });
   console.log('Mic clicked, new mute state:', mute);
   updateIcons();
 });
 
 headsetIcon.addEventListener('click', () => {
-  deaf = !deaf;
-  invoke('ds_set_voice_settings_command', { mute: mute, deaf: deaf });
+  invoke('ds_set_voice_settings_command', { mute: mute, deaf: !deaf });
   console.log('Headset clicked, new deaf state:', deaf);
   updateIcons();
 });
