@@ -214,3 +214,134 @@ body {
     padding: 20px;
     overflow-y: auto;
 }
+
+/* Slider container */
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+    margin-right: 100px;
+}
+
+/* Slider label */
+.slider-container label {
+    width: 50px;
+    font-size: 14px;
+    color: #dcddde;
+}
+
+/* Slider input */
+.slider-container input[type="range"] {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: #2f3136;
+    border-radius: 4px;
+    outline: none;
+    transition: background 0.2s;
+}
+
+/* Slider thumb */
+.slider-container input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #5865f2;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.slider-container input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #5865f2;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* Slider value display */
+.slider-container .slider-value {
+    width: 40px;
+    text-align: right;
+    font-size: 14px;
+    color: #dcddde;
+}
+
+/* Mode selector */
+.slider-container select {
+    flex-grow: 1;
+    height: 32px;
+    background-color: #2f3136;
+    color: #dcddde;
+    border: 1px solid #202225;
+    border-radius: 4px;
+    padding: 0 8px;
+    margin-right: 180px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.slider-container select:focus {
+    outline: none;
+    background-color: #393c43;
+}
+
+/* RGB sliders section */
+.rgb-sliders {
+    margin: 10px 0;
+}
+
+.rgb-sliders h5 {
+    margin: 10px 0 5px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #dcddde;
+}
+
+.tab-body {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    /* Use flexbox for centering */
+    flex-direction: column;
+    /* Stack content vertically */
+    align-items: center;
+    /* Center content horizontally */
+}
+
+/* Container for link buttons to center them */
+.link-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.link-button {
+    padding: 8px 16px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #5865f2;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: text-decoration 0.2s, background-color 0.2s, color 0.2s;
+    width: fit-content;
+}
+
+.link-button:hover {
+    text-decoration: underline;
+    background-color: rgba(88, 101, 242, 0.1);
+    color: #7289da;
+}

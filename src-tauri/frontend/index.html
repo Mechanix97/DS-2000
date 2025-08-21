@@ -21,7 +21,7 @@
                 <img src="static/Mechardo-labs.svg" alt="DS 2000 Logo"
                     style="width: 44px; height: 44px; filter: brightness(0) invert(1);">
             </button>
-            <button class="server-icon">
+            <button class="server-icon" id="instagram-button">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img">
                     &#x3C;title>Instagram&#x3C;/title>
                     <path
@@ -29,7 +29,7 @@
                     </path>
                 </svg>
             </button>
-            <button class="server-icon">
+            <button class="server-icon" id="twitter-button">
                 <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff">
                     &#x3C;title>X (Twitter)&#x3C;/title>
                     <path
@@ -37,7 +37,7 @@
                     </path>
                 </svg>
             </button>
-            <button class="server-icon">
+            <button class="server-icon" id="youtube-button">
                 <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff">
                     &#x3C;title>YouTube&#x3C;/title>
                     <path
@@ -45,7 +45,7 @@
                     </path>
                 </svg>
             </button>
-            <button class="server-icon">
+            <button class="server-icon" id="discord-invite-button">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img">
                     &#x3C;title>Discord&#x3C;/title>
                     <path
@@ -67,8 +67,7 @@
             <div class="channel-list">
                 <ul>
                     <li class="menu-item active" data-tab="rgb">RGB</li>
-                    <li class="menu-item" data-tab="conexiones">Conexiones</li>
-                    <li class="menu-item" data-tab="configuraciones">Configuraciones</li>
+                    <li class="menu-item" data-tab="configuraciones">Configuración</li>
                     <li class="menu-item" data-tab="acerca">Acerca</li>
                 </ul>
             </div>
@@ -77,7 +76,7 @@
             <div class="user-panel">
                 <div class="user-avatar"></div>
                 <div class="user-info">
-                    <div class="user-name">Lucas</div>
+                    <div class="user-name">Mechardo Labs</div>
                     <div class="user-status">En línea</div>
                 </div>
                 <div class="user-icons">
@@ -93,29 +92,60 @@
             <div class="tab-content" id="rgb" style="display: block;">
                 <div class="tab-header">
                     <h4>RGB</h4>
-                    <p>Sección para configuración de RGB.</p>
+                    <p>Configuración de iluminación.</p>
                 </div>
                 <div class="tab-body">
-                    <!-- Contenido placeholder para RGB -->
-                    <p>Aquí puedes ajustar los colores RGB de tu dispositivo DS 2000.</p>
-                    <!-- Ejemplo: Podrías agregar inputs para colores, etc. -->
-                    <input type="color" value="#ff0000">
-                </div>
-            </div>
+                    <!-- <p>Aquí puedes ajustar los colores RGB y el brillo de tu dispositivo DS 2000.</p> -->
+                    <div class="slider-container">
+                        <label for="mode-selector">Modo:</label>
+                        <select id="mode-selector">
+                            <option value="ciclar">Ciclar</option>
+                            <option value="respiracion">Respiración</option>
+                            <option value="fijo">Fijo</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <label for="brightness-slider">Brillo:</label>
+                        <input type="range" id="brightness-slider" min="0" max="255" value="128">
+                        <span class="slider-value" id="brightness-value">128</span>
+                    </div>
+                    <div id="rgb-sliders-led1" class="rgb-sliders" style="display: none;">
+                        <h5>LED 1</h5>
+                        <div class="slider-container">
+                            <label for="led1-red-slider">Rojo:</label>
+                            <input type="range" id="led1-red-slider" min="0" max="255" value="255">
+                            <span class="slider-value" id="led1-red-value">255</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="led1-green-slider">Verde:</label>
+                            <input type="range" id="led1-green-slider" min="0" max="255" value="0">
+                            <span class="slider-value" id="led1-green-value">0</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="led1-blue-slider">Azul:</label>
+                            <input type="range" id="led1-blue-slider" min="0" max="255" value="0">
+                            <span class="slider-value" id="led1-blue-value">0</span>
+                        </div>
+                    </div>
+                    <div id="rgb-sliders-led2" class="rgb-sliders" style="display: none;">
+                        <h5>LED 2</h5>
+                        <div class="slider-container">
+                            <label for="led2-red-slider">Rojo:</label>
+                            <input type="range" id="led2-red-slider" min="0" max="255" value="255">
+                            <span class="slider-value" id="led2-red-value">255</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="led2-green-slider">Verde:</label>
+                            <input type="range" id="led2-green-slider" min="0" max="255" value="0">
+                            <span class="slider-value" id="led2-green-value">0</span>
+                        </div>
+                        <div class="slider-container">
+                            <label for="led2-blue-slider">Azul:</label>
+                            <input type="range" id="led2-blue-slider" min="0" max="255" value="0">
+                            <span class="slider-value" id="led2-blue-value">0</span>
+                        </div>
+                    </div>
 
-            <!-- Pestaña Conexiones -->
-            <div class="tab-content" id="conexiones" style="display: none;">
-                <div class="tab-header">
-                    <h4>Conexiones</h4>
-                    <p>Gestión de conexiones.</p>
-                </div>
-                <div class="tab-body">
-                    <!-- Contenido placeholder para Conexiones -->
-                    <p>Lista de conexiones activas:</p>
-                    <ul>
-                        <li>Conexión WiFi: Activa</li>
-                        <li>Bluetooth: Inactivo</li>
-                    </ul>
                 </div>
             </div>
 
@@ -128,8 +158,8 @@
                 <div class="tab-body">
                     <!-- Contenido placeholder para Configuraciones -->
                     <p>Opciones de configuración:</p>
-                    <label><input type="checkbox" checked> Modo oscuro</label><br>
-                    <label><input type="checkbox"> Notificaciones</label>
+                    <label><input type="checkbox" checked> Iniciar con windows</label><br>
+                    <label><input type="checkbox"> Iniciar minimizado</label>
                 </div>
             </div>
 
@@ -139,11 +169,14 @@
                     <h4>Acerca</h4>
                     <p>Información sobre DS 2000.</p>
                 </div>
-                <div class="tab-body">
+                <div class="tab-body" style="text-align: center;">
                     <!-- Contenido placeholder para Acerca -->
                     <p>Versión: 1.0</p>
-                    <p>Desarrollado por: Lucas</p>
-                    <p>Fecha: 2025</p>
+                    <p>Desarrollado por Mechardo Labs</p>
+                    <p class="link-button" id="serviceTerms">Términos de servicio</p>
+                    <p class="link-button" id="privacyPolicy">Política de privacidad</p>
+                    <p>Buscar actualizaciones (TODO)</p>
+
                 </div>
             </div>
         </div>
