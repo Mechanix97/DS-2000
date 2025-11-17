@@ -1,6 +1,6 @@
 # DS-2000
 
-A professional, open-source desktop application for Discord integration and hardware device control. Built with Rust, Tauri, and modern web technologies.
+A professional, open-source desktop application for Discord integration and hardware device control. Built with Rust, Tauri and html&css.
 
 ## Features
 
@@ -44,7 +44,7 @@ A professional, open-source desktop application for Discord integration and hard
 ### Runtime Requirements
 
 - **Serial Port Access**: For hardware communication (USB drivers may be required)
-- **Discord Account**: For Discord integration features
+- **Discord Developer Account**: For Discord integration features and access key generation
 
 ## Installation
 
@@ -70,10 +70,9 @@ On first launch, you'll need to configure:
 
 ### 2. Discord Integration
 
-1. Go to **Settings** tab
-2. Click **Connect Discord** button
-3. Authenticate with your Discord account in the browser window
-4. Once connected, your status will appear in the interface
+1. DS-2000 will automatically connect to discord if the developer credentials are setted.
+2. Authenticate with your Discord account in the browser window
+3. Once connected, your status will appear in the interface
 
 ### 3. Hardware Control
 
@@ -93,12 +92,10 @@ On first launch, you'll need to configure:
 
 ### Discord OAuth Setup
 
-*For application developers only*
-
 1. Create a Discord Application at https://discord.com/developers/applications
 2. Get your Client ID and Client Secret
-3. Set Redirect URI to: `http://localhost:3000/callback` (or your configured redirect)
-4. Configuration is stored in `~/.ds2000/config.json` (user home directory)
+3. Set Redirect URI to: `http://localhost:3000/callback` (requiered by discord but not used)
+4. Configuration is stored in `~/.ds2000/config.json`
 
 ### Serial Device Configuration
 
@@ -187,7 +184,7 @@ Click to toggle. Discord status updates automatically.
 
 3. **Run in development mode**
    ```bash
-   npm run tauri dev
+   make run
    ```
 
 This will:
@@ -251,7 +248,7 @@ DS-2000/
 
 ### Code Quality Standards
 
-This is a professional open-source project. All contributions must meet these standards:
+This is a open-source project. All contributions must meet these standards:
 
 - **Rust Code**:
   - Must pass `cargo fmt` (formatting)
@@ -264,7 +261,6 @@ This is a professional open-source project. All contributions must meet these st
   - No console errors or warnings
 
 - **Git Workflow**:
-  - **Never** push directly to `main`
   - Create feature branches: `git checkout -b feature/description`
   - All changes via Pull Requests
   - PRs require code review and must pass all checks
@@ -278,12 +274,12 @@ This is a professional open-source project. All contributions must meet these st
 
 **Enable debug logging:**
 ```bash
-RUST_LOG=debug npm run tauri dev
+RUST_LOG=debug make run
 ```
 
 **Specific modules:**
 ```bash
-RUST_LOG=serial=debug,discord=info npm run tauri dev
+RUST_LOG=serial=debug,discord=info make run
 ```
 
 **Frontend debugging:**
@@ -295,7 +291,7 @@ RUST_LOG=serial=debug,discord=info npm run tauri dev
 
 Run the test suite:
 ```bash
-cargo test
+make test
 
 # With output
 cargo test -- --nocapture
@@ -356,6 +352,7 @@ This ensures DS-2000 remains free and open for the entire community.
 - **Documentation**: See [CLAUDE.md](CLAUDE.md) for development documentation
 - **Issues**: Check [GitHub Issues](https://github.com/Mechanix97/DS-2000/issues) for known problems
 - **Discussions**: Join our [GitHub Discussions](https://github.com/Mechanix97/DS-2000/discussions)
+- **Discord**: Join our community on [Discord](https://discord.gg/VtbFAGJe86)
 
 ### Reporting Issues
 
