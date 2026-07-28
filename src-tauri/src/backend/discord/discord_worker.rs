@@ -48,7 +48,7 @@ impl DiscordWorker {
         self.discord_handler
             .cast(InMessage::Fetch)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn get_voice_settings(&self) -> DiscordVoiceSettings {
@@ -64,7 +64,7 @@ impl DiscordWorker {
         self.discord_handler
             .cast(InMessage::SetVoiceSetting(mute, deafen))
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn is_connected(&mut self) -> Result<bool, DiscordError> {
@@ -72,7 +72,7 @@ impl DiscordWorker {
             .discord_handler
             .call(InCallMessage::DiscordStatus)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
+            .map_err(DiscordError::GenServerError)?;
         if st == OutMessage::DiscordStatus(DiscordConnectionState::Authenticated) {
             return Ok(true);
         }
@@ -83,7 +83,7 @@ impl DiscordWorker {
         self.discord_handler
             .cast(InMessage::DisconnectChannel)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn get_access_token(&mut self) -> Result<Option<String>, DiscordError> {
@@ -91,7 +91,7 @@ impl DiscordWorker {
             .discord_handler
             .call(InCallMessage::AccessToken)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
+            .map_err(DiscordError::GenServerError)?;
         let OutMessage::AccessToken(at) = om else {
             return Ok(None);
         };
@@ -103,7 +103,7 @@ impl DiscordWorker {
             .discord_handler
             .call(InCallMessage::RefreshToken)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
+            .map_err(DiscordError::GenServerError)?;
         let OutMessage::RefreshToken(rt) = om else {
             return Ok(None);
         };
@@ -114,7 +114,7 @@ impl DiscordWorker {
         self.discord_handler
             .call(InCallMessage::Shutdown)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
+            .map_err(DiscordError::GenServerError)?;
         Ok(())
     }
 }
@@ -144,6 +144,7 @@ mod tests {
         }
     }
     #[tokio::test]
+    #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
     async fn test_discord_worker_connection() {
         load_env_file();
 

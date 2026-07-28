@@ -28,12 +28,9 @@ async fn main() {
         .expect("Controller couldn't start");
 
     tauri::Builder::default()
-        // .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-        //     let window = app.get_webview_window("main").expect("no main window");
-        //     let _ = window.unminimize();
-        //     let _ = window.show();
-        //     let _ = window.set_focus();
-        // }))
+        // TODO: add a single-instance guard. Without one, a second launch fights the first for
+        // the serial port and the Discord pipe. The `tauri-plugin-single-instance` dependency
+        // was dropped while the feature stays unimplemented; re-add it when picking this up.
         .plugin(tauri_plugin_shell::init())
         .manage(controller.clone())
         .manage(shutdown_complete.clone())
@@ -42,13 +39,12 @@ async fn main() {
             commands::ds_set_voice_settings_command,
             commands::serial_set_rgb,
         ])
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 debug!("Hiding app");
                 api.prevent_close();
                 window.hide().unwrap();
             }
-            _ => {}
         })
         .setup(|app| {
             let quit_i = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
@@ -83,12 +79,13 @@ async fn main() {
                     }
                     _ => {}
                 })
-                .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click {
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
-                    } => {
+                    } = event
+                    {
                         debug!("left click pressed and released");
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
@@ -97,7 +94,6 @@ async fn main() {
                             let _ = window.set_focus();
                         }
                     }
-                    _ => {}
                 })
                 .build(app)?;
             let app_handle = app.handle().clone();

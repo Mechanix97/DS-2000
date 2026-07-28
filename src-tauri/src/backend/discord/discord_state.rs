@@ -317,6 +317,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
     async fn test_discord_state_connection() {
         load_env_file();
 
