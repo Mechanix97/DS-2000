@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep CI output small; the app logs through `tracing` at runtime anyway.
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: fmt + clippy + test
+    # Windows only for now: the `discord` crate does not compile on Linux yet, because
+    # `read_message_from_lock` in src/backend/discord/ipc.rs is written against Windows named
+    # pipes without a cfg gate. Add `ubuntu-latest` to the matrix once that is fixed.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The frontend must be built first: tauri.conf.json points `frontendDist` at
+      # frontend/dist, which is a build artifact and is not committed. Without this step the
+      # root DS2000 crate fails to build.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src-tauri/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src-tauri/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: src-tauri/frontend
+        run: npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      # --workspace matters: without it cargo only selects the root DS2000 package and the
+      # member crates are compiled as dependencies, so their lints are not enforced.
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # Tests that need a running Discord client or a physical DS-2000 device are marked
+      # #[ignore]. Run them locally with `cargo test -- --ignored`.
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --workspace
