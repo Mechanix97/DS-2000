@@ -45,6 +45,9 @@ pub async fn controller_start(
     Ok(())
 }
 
+// TODO: collapse these into a single `RGBConfig` payload deserialized from the frontend, which
+// also removes the mode-index coupling between `index.html` and this match.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn serial_set_rgb(
     mode: u8,

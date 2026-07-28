@@ -29,7 +29,7 @@ impl SerialWorker {
         self.serial_port_handler
             .cast(InMessage::Start(last_used_port))
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))
+            .map_err(SerialPortError::GenServerError)
     }
 
     pub async fn get_port_name(&mut self) -> Result<Option<String>, SerialPortError> {
@@ -37,7 +37,7 @@ impl SerialWorker {
             .serial_port_handler
             .call(InCallMessage::PortName)
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(SerialPortError::GenServerError)?;
         let OutMessage::PortName(rt) = om else {
             return Ok(None);
         };
@@ -49,7 +49,7 @@ impl SerialWorker {
             .serial_port_handler
             .call(InCallMessage::PendingMessages)
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(SerialPortError::GenServerError)?;
         let OutMessage::PendingMessages(pm) = om else {
             return Ok(vec![]);
         };
@@ -64,7 +64,7 @@ impl SerialWorker {
         self.serial_port_handler
             .cast(InMessage::SetVoiceSettings(mute, deafen))
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(SerialPortError::GenServerError)?;
         Ok(())
     }
 
@@ -73,7 +73,7 @@ impl SerialWorker {
             .serial_port_handler
             .call(InCallMessage::SerialPortStatus)
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(SerialPortError::GenServerError)?;
         if let OutMessage::SerialPortStatus(st) = om {
             return Ok(st);
         }
@@ -95,7 +95,7 @@ impl SerialWorker {
         self.serial_port_handler
             .cast(InMessage::RGBUpdate(rgb_update.clone()))
             .await
-            .map_err(|e| SerialPortError::GenServerError(e))?;
+            .map_err(SerialPortError::GenServerError)?;
         Ok(())
     }
 }
