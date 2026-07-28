@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # No base-branch filter: feature branches stack on each other in this repo, so a PR is not
+  # always targeting main. Filtering by base would silently skip CI on those.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
