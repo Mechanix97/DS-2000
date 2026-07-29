@@ -42,7 +42,7 @@ impl PipeMessage {
     }
 
     pub fn handshake(client_id: &str) -> Self {
-        let pl: String = format!(r#"{{"v": 1,"client_id": "{}"}}"#, client_id);
+        let pl: String = format!(r#"{{"v": 1,"client_id": "{client_id}"}}"#);
         Self {
             opcode: Opcode::Handshake,
             length: pl.len() as u32,
@@ -118,7 +118,7 @@ impl PipeMessage {
             r#"{{"nonce": "{}", "cmd": "SELECT_VOICE_CHANNEL","args": {{"channel_id": {}}}}}"#,
             generate_nonce(36),
             match channel_id {
-                Some(c) => format!(r#""{}""#, c),
+                Some(c) => format!(r#""{c}""#),
                 None => "null".to_string(),
             }
         );

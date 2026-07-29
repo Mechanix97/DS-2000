@@ -1,3 +1,4 @@
+use crate::credentials::DiscordCredentials;
 use crate::error::DiscordError;
 use crate::ipc::{DiscordConnectionState, IpcClient};
 use spawned_concurrency::tasks::{
@@ -6,7 +7,7 @@ use spawned_concurrency::tasks::{
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 const DISCORD_FETCH_INTERVAL: u64 = 250;
 
@@ -25,6 +26,8 @@ pub enum InMessage {
     Fetch,
     SetVoiceSetting(bool, bool),
     DisconnectChannel,
+    /// Applies credentials entered at runtime, so connecting does not require a restart.
+    SetCredentials(Box<Option<DiscordCredentials>>),
 }
 
 #[derive(Clone, PartialEq)]
@@ -45,56 +48,170 @@ pub struct DiscordVoiceSettings {
 pub struct DiscordState {
     pub fetch_interval_ms: u64,
     pub ipc_client: IpcClient,
-    pub client_id: String,
-    pub client_secret: String,
-    pub redirect_url: String,
+    /// `None` until the user registers a Discord application. While it is `None` the state
+    /// machine stays parked instead of retrying a connection it cannot possibly complete.
+    pub credentials: Option<DiscordCredentials>,
     pub code: Option<String>,
-    pub access_token: Option<String>,
-    pub refresh_token: Option<String>,
     pub voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
     pub shutdown: bool,
 }
 
 impl DiscordState {
     pub fn new(
-        client_id: String,
-        client_secret: String,
-        redirect_url: String,
-        access_token: Option<String>,
-        refresh_token: Option<String>,
+        credentials: Option<DiscordCredentials>,
         voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
     ) -> Self {
         Self {
             fetch_interval_ms: DISCORD_FETCH_INTERVAL,
             ipc_client: IpcClient::new(),
-            client_id,
-            client_secret,
-            redirect_url,
+            credentials,
             code: None,
-            access_token,
-            refresh_token,
             voice_setting,
             shutdown: false,
         }
     }
 
     pub async fn spawn(
-        client_id: String,
-        client_secret: String,
-        redirect_url: String,
-        access_token: Option<String>,
-        refresh_token: Option<String>,
+        credentials: Option<DiscordCredentials>,
         voice_setting: Arc<Mutex<DiscordVoiceSettings>>,
     ) -> DiscordStateHandler {
-        let state = Self::new(
-            client_id,
-            client_secret,
-            redirect_url,
-            access_token,
-            refresh_token,
-            voice_setting,
-        );
-        state.start()
+        Self::new(credentials, voice_setting).start()
+    }
+
+    /// Advances the connection state machine by one step.
+    ///
+    /// Split out of `handle_cast` so the message handler stays readable and so the "no
+    /// credentials" short-circuit has one obvious home.
+    async fn advance(&mut self) {
+        let Some(credentials) = self.credentials.clone() else {
+            return;
+        };
+
+        match self.ipc_client.state {
+            DiscordConnectionState::NotConnected => {
+                debug!("Starting Discord connection");
+                if let Err(err) = self.ipc_client.connect().await {
+                    debug!("Discord is not running or the pipe is unavailable: {err}");
+                    self.ipc_client.disconnect().await;
+                }
+            }
+            DiscordConnectionState::Connected => {
+                debug!("Performing Discord handshake");
+                if let Err(err) = self.ipc_client.handshake(&credentials.client_id).await {
+                    warn!("Discord handshake failed: {err}");
+                    self.ipc_client.disconnect().await;
+                }
+            }
+            DiscordConnectionState::HandshakeDone => {
+                self.authorize_or_authenticate(&credentials).await;
+            }
+            DiscordConnectionState::Authorized => {
+                self.exchange_code(&credentials).await;
+            }
+            DiscordConnectionState::Authenticated => {
+                match self.ipc_client.get_voice_settings().await {
+                    Ok((mute, deafen)) => {
+                        *self.voice_setting.lock().await = DiscordVoiceSettings { mute, deafen };
+                    }
+                    Err(err) => {
+                        warn!("Could not read voice settings, dropping the connection: {err}");
+                        self.ipc_client.disconnect().await;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reuses stored tokens when possible, refreshes them when only the refresh token survives,
+    /// and falls back to prompting the user with the authorisation modal.
+    async fn authorize_or_authenticate(&mut self, credentials: &DiscordCredentials) {
+        match (
+            self.credentials
+                .as_ref()
+                .and_then(|c| c.access_token.clone()),
+            self.credentials
+                .as_ref()
+                .and_then(|c| c.refresh_token.clone()),
+        ) {
+            (Some(access_token), _) => {
+                if let Err(err) = self.ipc_client.authenticate(&access_token).await {
+                    debug!("Stored access token rejected, will try to refresh: {err}");
+                    self.set_access_token(None);
+                }
+            }
+            (None, Some(refresh_token)) => {
+                match self
+                    .ipc_client
+                    .refresh_access_token(
+                        &refresh_token,
+                        &credentials.client_secret,
+                        &credentials.redirect_url,
+                    )
+                    .await
+                {
+                    Ok((access_token, new_refresh_token)) => {
+                        self.set_tokens(Some(access_token.clone()), Some(new_refresh_token));
+                        if let Err(err) = self.ipc_client.authenticate(&access_token).await {
+                            warn!("Authentication failed after refreshing the token: {err}");
+                            self.set_tokens(None, None);
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Could not refresh the access token, reauthorisation needed: {err}");
+                        self.set_tokens(None, None);
+                    }
+                }
+            }
+            (None, None) => match self.ipc_client.authorize().await {
+                Ok(code) => self.code = Some(code),
+                Err(err) => {
+                    warn!("Discord authorisation was refused or dismissed: {err}");
+                    self.ipc_client.disconnect().await;
+                }
+            },
+        }
+    }
+
+    async fn exchange_code(&mut self, credentials: &DiscordCredentials) {
+        let Some(code) = self.code.clone() else {
+            warn!("Reached the authorized state without an authorisation code");
+            self.ipc_client.disconnect().await;
+            return;
+        };
+
+        let token = match self
+            .ipc_client
+            .get_access_tokens(&code, &credentials.client_secret, &credentials.redirect_url)
+            .await
+        {
+            Ok((access_token, refresh_token)) => {
+                self.set_tokens(Some(access_token.clone()), Some(refresh_token));
+                access_token
+            }
+            Err(err) => {
+                warn!("Could not exchange the authorisation code for a token: {err}");
+                self.ipc_client.disconnect().await;
+                return;
+            }
+        };
+
+        if let Err(err) = self.ipc_client.authenticate(&token).await {
+            warn!("Authentication with the fresh token failed: {err}");
+            self.ipc_client.disconnect().await;
+        }
+    }
+
+    fn set_access_token(&mut self, access_token: Option<String>) {
+        if let Some(credentials) = self.credentials.as_mut() {
+            credentials.access_token = access_token;
+        }
+    }
+
+    fn set_tokens(&mut self, access_token: Option<String>, refresh_token: Option<String>) {
+        if let Some(credentials) = self.credentials.as_mut() {
+            credentials.access_token = access_token;
+            credentials.refresh_token = refresh_token;
+        }
     }
 }
 
@@ -114,120 +231,13 @@ impl GenServer for DiscordState {
         }
         match message {
             Self::CastMsg::Fetch => {
-                match self.ipc_client.state {
-                    DiscordConnectionState::NotConnected => {
-                        debug!("Starting discord connection");
-                        if let Err(err) = self.ipc_client.connect().await {
-                            debug!("Error during discord connection start: {err}");
-                            self.ipc_client.disconnect().await;
-                        };
-                    }
-                    DiscordConnectionState::Connected => {
-                        debug!("Doing Discord Handshake");
-
-                        if let Err(err) = self.ipc_client.handshake(&self.client_id).await {
-                            debug!("Error during discord handshake: {err}");
-                            self.ipc_client.disconnect().await;
-                        };
-                    }
-                    DiscordConnectionState::HandshakeDone => {
-                        debug!("Doing Discord authorization");
-                        match (&self.access_token, &self.refresh_token) {
-                            (Some(access_token), Some(_)) => {
-                                if let Err(err) = self.ipc_client.authenticate(access_token).await {
-                                    debug!(
-                                        "Error during discord authentication with stored token: {err}"
-                                    );
-                                    self.access_token = None;
-                                }
-                            }
-                            (None, Some(refresh_token)) => {
-                                match self
-                                    .ipc_client
-                                    .refresh_access_token(
-                                        refresh_token,
-                                        &self.client_secret,
-                                        &self.redirect_url,
-                                    )
-                                    .await
-                                {
-                                    Ok((access_token, new_refresh_token)) => {
-                                        self.access_token = Some(access_token.clone());
-                                        self.refresh_token = Some(new_refresh_token.clone());
-
-                                        if let Err(err) =
-                                            self.ipc_client.authenticate(&access_token).await
-                                        {
-                                            debug!(
-                                                "Error during discord authentication after refresh: {err}"
-                                            );
-                                            self.access_token = None;
-                                            self.refresh_token = None;
-                                        }
-                                    }
-                                    Err(err) => {
-                                        debug!("Error refreshing access token: {err}");
-                                        self.access_token = None;
-                                        self.refresh_token = None;
-                                    }
-                                }
-                            }
-                            (Some(_), None) => {
-                                debug!("shouldn't be here, restoring to previous state");
-                                self.access_token = None;
-                            }
-                            (None, None) => match self.ipc_client.authorize().await {
-                                Ok(code) => {
-                                    self.code = Some(code);
-                                }
-                                Err(err) => {
-                                    debug!("Error during discord authorization: {err}");
-                                    self.ipc_client.disconnect().await;
-                                }
-                            },
-                        }
-                    }
-                    DiscordConnectionState::Authorized => {
-                        debug!("Doing Discord authentication");
-                        let Some(code) = &self.code else {
-                            debug!("Error: Code should be set");
-                            self.ipc_client.disconnect().await;
-                            return CastResponse::NoReply(self);
-                        };
-                        let token = match self
-                            .ipc_client
-                            .get_access_tokens(code, &self.client_secret, &self.redirect_url)
-                            .await
-                        {
-                            Ok((access_token, refresh_token)) => {
-                                self.access_token = Some(access_token.clone());
-                                self.refresh_token = Some(refresh_token.clone());
-                                access_token
-                            }
-                            Err(err) => {
-                                debug!("Error getting access token {err}");
-                                self.ipc_client.disconnect().await;
-                                return CastResponse::NoReply(self);
-                            }
-                        };
-                        if let Err(err) = self.ipc_client.authenticate(&token).await {
-                            debug!("Error during discord authentication: {err}");
-                            self.ipc_client.disconnect().await;
-                        };
-                    }
-                    DiscordConnectionState::Authenticated => {
-                        match self.ipc_client.get_voice_settings().await {
-                            Ok((mute, deafen)) => {
-                                let mut lock = self.voice_setting.lock().await;
-                                *lock = DiscordVoiceSettings { mute, deafen };
-                            }
-                            Err(err) => {
-                                debug!("Error during discord authentication: {err}");
-                                self.ipc_client.disconnect().await;
-                            }
-                        }
-                    }
+                if self.credentials.is_none() {
+                    // Parked: no application registered yet. `SetCredentials` restarts the loop,
+                    // so there is nothing to reschedule and nothing to burn CPU on.
+                    return CastResponse::NoReply(self);
                 }
+
+                self.advance().await;
 
                 send_after(
                     Duration::from_millis(self.fetch_interval_ms),
@@ -236,16 +246,42 @@ impl GenServer for DiscordState {
                 );
                 CastResponse::NoReply(self)
             }
+            Self::CastMsg::SetCredentials(credentials) => {
+                let credentials = *credentials;
+                let had_credentials = self.credentials.is_some();
+                let changed = self.credentials != credentials;
+
+                if changed {
+                    // Any live session belongs to the previous application.
+                    self.ipc_client.disconnect().await;
+                    self.code = None;
+                    self.credentials = credentials;
+                }
+
+                if self.credentials.is_some() {
+                    info!("Discord credentials set, starting connection");
+                    if !had_credentials || changed {
+                        send_after(
+                            Duration::from_millis(0),
+                            handle.clone(),
+                            Self::CastMsg::Fetch,
+                        );
+                    }
+                } else {
+                    info!("Discord credentials cleared, connection stopped");
+                }
+                CastResponse::NoReply(self)
+            }
             Self::CastMsg::SetVoiceSetting(mute, deafen) => {
                 if let Err(err) = self.ipc_client.set_voice_settings(mute, deafen).await {
-                    debug!("Error while setting voice settings {err}");
+                    warn!("Could not set voice settings: {err}");
                     self.ipc_client.disconnect().await;
                 }
                 CastResponse::NoReply(self)
             }
             Self::CastMsg::DisconnectChannel => {
                 if let Err(err) = self.ipc_client.select_voice_channel(None).await {
-                    debug!("Error while setting voice settings {err}");
+                    warn!("Could not leave the voice channel: {err}");
                     self.ipc_client.disconnect().await;
                 }
                 CastResponse::NoReply(self)
@@ -260,16 +296,22 @@ impl GenServer for DiscordState {
     ) -> CallResponse<Self> {
         match message {
             Self::CallMsg::DiscordStatus => {
-                let st = self.ipc_client.state.clone();
-                CallResponse::Reply(self, OutMessage::DiscordStatus(st))
+                let state = self.ipc_client.state.clone();
+                CallResponse::Reply(self, OutMessage::DiscordStatus(state))
             }
             Self::CallMsg::AccessToken => {
-                let at = self.access_token.clone();
-                CallResponse::Reply(self, OutMessage::AccessToken(at))
+                let token = self
+                    .credentials
+                    .as_ref()
+                    .and_then(|c| c.access_token.clone());
+                CallResponse::Reply(self, OutMessage::AccessToken(token))
             }
             Self::CallMsg::RefreshToken => {
-                let rt = self.refresh_token.clone();
-                CallResponse::Reply(self, OutMessage::RefreshToken(rt))
+                let token = self
+                    .credentials
+                    .as_ref()
+                    .and_then(|c| c.refresh_token.clone());
+                CallResponse::Reply(self, OutMessage::RefreshToken(token))
             }
             Self::CallMsg::Shutdown => {
                 self.shutdown = true;
@@ -280,71 +322,54 @@ impl GenServer for DiscordState {
     }
 }
 
-// for running these tests, discord should be running on the background
 #[cfg(test)]
 mod tests {
-    use crate::discord_state::DiscordVoiceSettings;
-    use crate::discord_state::InCallMessage;
-    use crate::discord_state::OutMessage;
-    use crate::ipc::DiscordConnectionState;
+    use super::*;
 
-    use super::DiscordState;
-    use super::DiscordStateHandler;
-    use super::InMessage;
-
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
-    use std::path::PathBuf;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-    use tokio::time::{Duration, sleep};
-
-    fn load_env_file() {
-        let env_file_path = PathBuf::from("../../../../discord.env");
-
-        let reader = BufReader::new(File::open(env_file_path).unwrap());
-
-        for line in reader.lines() {
-            let line = line.unwrap();
-            if line.starts_with("#") {
-                continue;
-            };
-            match line.split_once('=') {
-                Some((key, value)) => unsafe { std::env::set_var(key, value) },
-                None => continue,
-            };
-        }
+    fn voice_settings() -> Arc<Mutex<DiscordVoiceSettings>> {
+        Arc::new(Mutex::new(DiscordVoiceSettings {
+            mute: false,
+            deafen: false,
+        }))
     }
 
     #[tokio::test]
-    async fn test_discord_state_connection() {
-        load_env_file();
+    async fn without_credentials_the_state_machine_does_not_touch_the_pipe() {
+        let mut state = DiscordState::new(None, voice_settings());
 
-        let client_id = std::env::var("DISCORD_CLIENT_ID").unwrap();
-        let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
-        let redirect_url = "https://www.mechardo3d.xyz/".to_string();
+        state.advance().await;
 
-        let mut dw: DiscordStateHandler = DiscordState::spawn(
-            client_id,
-            client_secret,
-            redirect_url,
-            None,
-            None,
-            Arc::new(Mutex::new(DiscordVoiceSettings {
-                mute: false,
-                deafen: false,
-            })),
+        assert_eq!(state.ipc_client.state, DiscordConnectionState::NotConnected);
+        assert!(state.code.is_none());
+    }
+
+    #[tokio::test]
+    async fn tokens_are_readable_back_from_the_credentials() {
+        let credentials = DiscordCredentials::new(
+            "id".to_owned(),
+            "secret".to_owned(),
+            "http://localhost/".to_owned(),
         )
-        .await;
-        dw.cast(InMessage::Fetch).await.unwrap();
+        .with_tokens(Some("access".to_owned()), Some("refresh".to_owned()));
 
-        while dw.call(InCallMessage::DiscordStatus).await.unwrap()
-            != OutMessage::DiscordStatus(DiscordConnectionState::Authenticated)
-        {}
+        let mut state = DiscordState::new(Some(credentials), voice_settings());
 
-        dw.cast(InMessage::SetVoiceSetting(true, true))
-            .await
-            .unwrap();
-        sleep(Duration::from_secs(5)).await;
+        assert_eq!(
+            state
+                .credentials
+                .as_ref()
+                .and_then(|c| c.access_token.clone()),
+            Some("access".to_owned())
+        );
+
+        state.set_tokens(None, None);
+
+        assert!(
+            state
+                .credentials
+                .as_ref()
+                .and_then(|c| c.access_token.clone())
+                .is_none()
+        );
     }
 }

@@ -1,9 +1,12 @@
 /target
-Cargo.lock
 /gen
 /secrets
 */node_modules/
 /src-tauri/target
 /src-tauri/gen
 discord.env
-src-tauri/src/config/secrets.rs
+
+# Claude Code internal working notes: local to this machine.
+# Only this subfolder is ignored, so the rest of .claude/ (settings, skills) can be
+# versioned if it ever becomes useful.
+.claude/internal/

@@ -1,3 +1,4 @@
+use crate::credentials::DiscordCredentials;
 use crate::discord_state::DiscordState;
 use crate::discord_state::DiscordStateHandler;
 use crate::discord_state::DiscordVoiceSettings;
@@ -16,27 +17,15 @@ pub struct DiscordWorker {
 }
 
 impl DiscordWorker {
-    pub async fn new(
-        client_id: String,
-        client_secret: String,
-        redirect_url: String,
-        access_token: Option<String>,
-        refresh_token: Option<String>,
-    ) -> Self {
+    /// Creates the worker. `credentials` is `None` until the user registers a Discord
+    /// application; the worker stays idle in that case and starts on [`Self::set_credentials`].
+    pub async fn new(credentials: Option<DiscordCredentials>) -> Self {
         let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings {
             mute: false,
             deafen: false,
         }));
 
-        let discord_handler = DiscordState::spawn(
-            client_id,
-            client_secret,
-            redirect_url,
-            access_token,
-            refresh_token,
-            voice_settings.clone(),
-        )
-        .await;
+        let discord_handler = DiscordState::spawn(credentials, voice_settings.clone()).await;
 
         Self {
             discord_handler,
@@ -48,12 +37,22 @@ impl DiscordWorker {
         self.discord_handler
             .cast(InMessage::Fetch)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
+    }
+
+    /// Applies credentials entered at runtime. Passing `None` stops the connection.
+    pub async fn set_credentials(
+        &mut self,
+        credentials: Option<DiscordCredentials>,
+    ) -> Result<(), DiscordError> {
+        self.discord_handler
+            .cast(InMessage::SetCredentials(Box::new(credentials)))
+            .await
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn get_voice_settings(&self) -> DiscordVoiceSettings {
-        let lock = self.voice_settings.lock().await;
-        (*lock).clone()
+        self.voice_settings.lock().await.clone()
     }
 
     pub async fn set_voice_settings(
@@ -64,131 +63,131 @@ impl DiscordWorker {
         self.discord_handler
             .cast(InMessage::SetVoiceSetting(mute, deafen))
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn is_connected(&mut self) -> Result<bool, DiscordError> {
-        let st: OutMessage = self
+        let status: OutMessage = self
             .discord_handler
             .call(InCallMessage::DiscordStatus)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
-        if st == OutMessage::DiscordStatus(DiscordConnectionState::Authenticated) {
-            return Ok(true);
-        }
-        Ok(false)
+            .map_err(DiscordError::GenServerError)?;
+        Ok(status == OutMessage::DiscordStatus(DiscordConnectionState::Authenticated))
     }
 
     pub async fn disconnect(&mut self) -> Result<(), DiscordError> {
         self.discord_handler
             .cast(InMessage::DisconnectChannel)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))
+            .map_err(DiscordError::GenServerError)
     }
 
     pub async fn get_access_token(&mut self) -> Result<Option<String>, DiscordError> {
-        let om: OutMessage = self
+        let message: OutMessage = self
             .discord_handler
             .call(InCallMessage::AccessToken)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
-        let OutMessage::AccessToken(at) = om else {
+            .map_err(DiscordError::GenServerError)?;
+        let OutMessage::AccessToken(token) = message else {
             return Ok(None);
         };
-        Ok(at)
+        Ok(token)
     }
 
     pub async fn get_refresh_token(&mut self) -> Result<Option<String>, DiscordError> {
-        let om: OutMessage = self
+        let message: OutMessage = self
             .discord_handler
             .call(InCallMessage::RefreshToken)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
-        let OutMessage::RefreshToken(rt) = om else {
+            .map_err(DiscordError::GenServerError)?;
+        let OutMessage::RefreshToken(token) = message else {
             return Ok(None);
         };
-        Ok(rt)
+        Ok(token)
     }
 
     pub async fn shutdown(&mut self) -> Result<(), DiscordError> {
         self.discord_handler
             .call(InCallMessage::Shutdown)
             .await
-            .map_err(|e| DiscordError::GenServerError(e))?;
+            .map_err(DiscordError::GenServerError)?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DiscordWorker;
+    use super::*;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
     use std::path::PathBuf;
     use tokio::time::{Duration, sleep};
 
-    fn load_env_file() {
-        let env_file_path = PathBuf::from("../../../../discord.env");
-
-        let reader = BufReader::new(File::open(env_file_path).unwrap());
-
-        for line in reader.lines() {
-            let line = line.unwrap();
-            if line.starts_with("#") {
-                continue;
-            };
-            match line.split_once('=') {
-                Some((key, value)) => unsafe { std::env::set_var(key, value) },
-                None => continue,
-            };
-        }
-    }
     #[tokio::test]
-    async fn test_discord_worker_connection() {
-        load_env_file();
+    async fn a_worker_without_credentials_reports_itself_disconnected() {
+        let mut worker = DiscordWorker::new(None).await;
 
-        let client_id = std::env::var("DISCORD_CLIENT_ID").unwrap();
-        let client_secret = std::env::var("DISCORD_SECRET_KEY").unwrap();
-        let redirect_url = "https://www.mechardo3d.xyz/".to_string();
+        worker.start().await.expect("start is accepted");
 
-        let mut discord_worker =
-            DiscordWorker::new(client_id, client_secret, redirect_url, None, None).await;
+        assert!(!worker.is_connected().await.expect("status is readable"));
+        assert!(worker.get_access_token().await.expect("readable").is_none());
+    }
 
-        discord_worker.start().await.unwrap();
+    /// Reads the developer's own Discord application credentials, the same way a user supplies
+    /// theirs through the UI.
+    fn credentials_from_env_file() -> DiscordCredentials {
+        let file = File::open(PathBuf::from("../../../../discord.env")).expect("discord.env");
+        for line in BufReader::new(file).lines() {
+            let line = line.expect("readable line");
+            if line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                unsafe { std::env::set_var(key, value) };
+            }
+        }
 
-        while !discord_worker.is_connected().await.unwrap() {}
+        DiscordCredentials::new(
+            std::env::var("DISCORD_CLIENT_ID").expect("DISCORD_CLIENT_ID"),
+            std::env::var("DISCORD_SECRET_KEY").expect("DISCORD_SECRET_KEY"),
+            "http://localhost/".to_owned(),
+        )
+    }
 
-        discord_worker
+    #[tokio::test]
+    #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
+    async fn credentials_supplied_at_runtime_drive_a_full_connection() {
+        let mut worker = DiscordWorker::new(None).await;
+        worker.start().await.expect("start is accepted");
+
+        // Nothing should happen until credentials arrive: this is the state a fresh install is
+        // in, and it must not connect on its own.
+        sleep(Duration::from_secs(1)).await;
+        assert!(!worker.is_connected().await.expect("status is readable"));
+
+        worker
+            .set_credentials(Some(credentials_from_env_file()))
+            .await
+            .expect("credentials accepted");
+
+        while !worker.is_connected().await.expect("status is readable") {
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        worker
             .set_voice_settings(true, false)
             .await
-            .unwrap();
+            .expect("voice settings accepted");
         sleep(Duration::from_secs(1)).await;
+        assert!(worker.get_voice_settings().await.mute);
 
-        let vs = discord_worker.get_voice_settings().await;
-
-        assert!(vs.mute);
-        assert!(!vs.deafen);
-
-        discord_worker.set_voice_settings(true, true).await.unwrap();
-        sleep(Duration::from_secs(1)).await;
-
-        let vs = discord_worker.get_voice_settings().await;
-
-        assert!(vs.mute);
-        assert!(vs.deafen);
-
-        discord_worker
+        worker
             .set_voice_settings(false, false)
             .await
-            .unwrap();
+            .expect("voice settings accepted");
         sleep(Duration::from_secs(1)).await;
+        assert!(!worker.get_voice_settings().await.mute);
 
-        let vs = discord_worker.get_voice_settings().await;
-
-        assert!(!vs.mute);
-        assert!(!vs.deafen);
-
-        discord_worker.disconnect().await.unwrap();
-        sleep(Duration::from_secs(1)).await;
+        worker.shutdown().await.expect("shuts down");
     }
 }

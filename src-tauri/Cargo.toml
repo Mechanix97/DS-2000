@@ -22,8 +22,9 @@ controller = { path = "src/controller" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tauri-plugin-shell = "2.0"
-tauri-plugin-single-instance = "2.0"
 
+# Not referenced directly by main.rs, but `tauri::generate_context!()` expands to code that
+# resolves `serde_json` in this crate's scope. Removing it breaks the build.
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 
@@ -47,14 +48,13 @@ serde_json = "1.0"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 directories = "6.0"
 
-log = "0.4"
-aes-gcm = "0.10"
-hex = "0.4"
+# Only the Windows backend is enabled: Windows is the supported platform, and the other backends
+# pull in platform toolchains we do not build against. Revisit when Linux/macOS become targets.
+keyring = { version = "3", features = ["windows-native"] }
 bytes = { version = "1.6.0" }
 tracing = "0.1"
 
 tokio = { version = "1.0", features = ["full"] }
-tokio-serial = "5.4"
 serial2-tokio = "0.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 futures-util = { version = "0.3", features = ["sink"] }

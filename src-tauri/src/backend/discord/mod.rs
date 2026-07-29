@@ -1,3 +1,4 @@
+pub mod credentials;
 pub mod discord_state;
 pub mod discord_worker;
 pub mod error;

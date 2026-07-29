@@ -38,6 +38,12 @@ pub struct IpcClient {
     pub state: DiscordConnectionState,
 }
 
+impl Default for IpcClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IpcClient {
     pub fn new() -> Self {
         Self {
@@ -54,7 +60,7 @@ impl IpcClient {
         }
         let iter = 0..10;
         for i in iter {
-            let pipe_name = format!(r"\\?\pipe\discord-ipc-{}", i);
+            let pipe_name = format!(r"\\?\pipe\discord-ipc-{i}");
             if let Ok(pipe) = ClientOptions::new().open(pipe_name) {
                 self.pipe_client = Some(Arc::new(Mutex::new(pipe)));
                 self.state = DiscordConnectionState::Connected;
@@ -62,7 +68,7 @@ impl IpcClient {
             }
         }
 
-        return Err(DiscordError::PipeConnectionFailed);
+        Err(DiscordError::PipeConnectionFailed)
     }
 
     #[cfg(unix)]
@@ -125,7 +131,7 @@ impl IpcClient {
         }
 
         self.state = DiscordConnectionState::HandshakeDone;
-        return Ok(());
+        Ok(())
     }
 
     pub async fn authorize(&mut self) -> Result<String, DiscordError> {
@@ -141,7 +147,7 @@ impl IpcClient {
         let mut pipe_lock = pipe_client.lock().await;
 
         pipe_lock
-            .write_all(&PipeMessage::authorize(&client_id, "rpc").to_buff())
+            .write_all(&PipeMessage::authorize(client_id, "rpc").to_buff())
             .await?;
 
         //receive reply
@@ -368,26 +374,24 @@ pub async fn read_message_from_lock(
     mut pipe_lock: tokio::sync::MutexGuard<'_, NamedPipeClient>,
 ) -> Result<PipeMessage, DiscordError> {
     let mut buf = [0u8; 4];
-    let received_opcode: u32;
-    let received_length: u32;
 
     pipe_lock.read_exact(&mut buf).await?;
 
-    received_opcode = u32::from_le_bytes(buf);
+    let received_opcode: u32 = u32::from_le_bytes(buf);
 
     pipe_lock.read_exact(&mut buf).await?;
 
-    received_length = u32::from_le_bytes(buf);
+    let received_length: u32 = u32::from_le_bytes(buf);
 
     let mut response_data = vec![0u8; received_length as usize];
     pipe_lock.read_exact(&mut response_data).await?;
 
     let response_data_str = String::from_utf8_lossy(&response_data).into_owned();
 
-    return Ok(PipeMessage::new(
+    Ok(PipeMessage::new(
         Opcode::new(received_opcode),
         &response_data_str,
-    ));
+    ))
 }
 
 // for running these tests, discord should be running on the background
@@ -419,6 +423,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
     async fn test_discord_connection() {
         load_env_file();
         let mut ipc_client: IpcClient = IpcClient::new();

@@ -5,7 +5,7 @@ use super::serial_message::SerialMessageCodec;
 
 use futures_util::{SinkExt, StreamExt};
 use serial2_tokio::SerialPort;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -22,6 +22,12 @@ pub struct Port {
     pub connected: bool,
 }
 
+impl Default for Port {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Port {
     pub fn new() -> Port {
         Port {
@@ -35,14 +41,14 @@ impl Port {
 
     pub fn connect(
         &mut self,
-        port_name: &PathBuf,
+        port_name: &Path,
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
         if self.is_connected() {
             return Err(SerialPortError::PortAlreadyConnected);
         }
-        match SerialPort::open(port_name.clone(), baudrate) {
+        match SerialPort::open(port_name, baudrate) {
             Ok(p) => {
                 p.set_dtr(true)?;
                 p.set_rts(true)?;
@@ -69,10 +75,10 @@ impl Port {
             port.flush().await?;
             drop(framed);
         }
-        if self.connected {
-            if let Some(port_name) = &self.name {
-                info!("Serial port {port_name} disconnected");
-            }
+        if self.connected
+            && let Some(port_name) = &self.name
+        {
+            info!("Serial port {port_name} disconnected");
         }
         self.name = None;
         self.baudrate = 0;
@@ -130,11 +136,11 @@ impl Port {
 
     pub async fn connect_and_authenticate(
         &mut self,
-        port_name: &PathBuf,
+        port_name: &Path,
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
-        self.connect(&port_name, baudrate, timeout)?;
+        self.connect(port_name, baudrate, timeout)?;
 
         if let Err(err) = self.authenticate().await {
             self.disconnect().await?;
@@ -188,11 +194,11 @@ mod test {
     use tokio::time::sleep;
 
     #[tokio::test]
+    #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     pub async fn test_auto_connect() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_millis(1000)).await {
-            Err(e) => eprintln!("Error: {:?}", e),
-            Ok(_) => {}
+        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -201,11 +207,11 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     pub async fn test_double_ping() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_millis(1000)).await {
-            Err(e) => eprintln!("Error: {:?}", e),
-            Ok(_) => {}
+        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -222,11 +228,11 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     pub async fn test_disconnect() {
         let mut port = Port::new();
-        match port.auto_connect(115200, Duration::from_millis(1000)).await {
-            Err(e) => eprintln!("Error: {:?}", e),
-            Ok(_) => {}
+        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -236,9 +242,8 @@ mod test {
 
         assert!(!port.is_connected());
 
-        match port.auto_connect(115200, Duration::from_millis(1000)).await {
-            Err(e) => eprintln!("Error: {:?}", e),
-            Ok(_) => {}
+        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());

@@ -82,7 +82,7 @@ src-tauri/frontend/
 ### Configuration Files
 
 - **tauri.conf.json**: Tauri app configuration (window, plugins, permissions, bundling)
-- **Cargo.toml**: Rust workspace setup with proper edition "2021" (should be fixed from "2024")
+- **Cargo.toml**: Rust workspace setup, edition "2024" (requires Rust 1.85+)
 - **src-tauri/frontend/package.json**: Frontend dependencies (minimal)
 
 ## Architecture Insights
@@ -116,7 +116,9 @@ The application uses a **multi-worker pattern** for concurrent operations:
 | tokio | Async runtime | 1.0 (full features) |
 | tracing | Structured logging | 0.1 |
 | serde | JSON serialization | 1.0 |
-| tokio-serial | Serial port handling | 5.4 |
+| serial2-tokio | Serial port handling | 0.1 |
+| tokio-util | Framed codec for the serial protocol | 0.7 |
+| spawned-concurrency | GenServer actors for the workers | 0.2 |
 | reqwest | HTTP client for Discord API | 0.11 |
 | thiserror | Error handling macros | 2.0 |
 
@@ -360,9 +362,15 @@ RUST_LOG=serial=debug,discord=debug npm run tauri dev
 
 ### Running Tests
 
+Tests that need a running Discord client or a physical DS-2000 device are marked `#[ignore]` so
+that `cargo test` stays green in CI. Run them explicitly with `cargo test -- --ignored`.
+
 ```bash
 # Run all Rust tests with output
 cargo test -- --nocapture
+
+# Run the hardware / Discord integration tests (needs the device and Discord running)
+cargo test -- --ignored --nocapture
 
 # Run tests for specific workspace member
 cargo test -p serial -- --nocapture
@@ -375,7 +383,7 @@ cargo test discord_worker::tests -- --nocapture
 
 ### Rust
 
-- **Edition**: 2021 (fix from current "2024" in Cargo.toml)
+- **Edition**: 2024 (do not downgrade; the codebase relies on 2024 semantics, e.g. `unsafe { env::set_var }`)
 - **Formatting**: `cargo fmt` enforces standard formatting
 - **Linting**: `cargo clippy` must pass with no warnings
 - **Naming**: `snake_case` for functions/variables, `CamelCase` for types
@@ -413,11 +421,14 @@ cargo test discord_worker::tests -- --nocapture
   - Good: "feat: add language selector to settings"
   - Good: "fix: resolve serial port timeout issue"
   - Bad: "fixes stuff", "wip", "asdf"
+  - **No AI attribution**: commit messages and PR bodies must not contain `Co-Authored-By` trailers
+    naming an AI assistant, nor "Generated with ..." footers. The history is the project's own.
 
 ## Known Issues and Technical Debt
 
-- **Cargo.toml Edition**: Currently set to "2024" - should be "2021"
-- **Single-Instance Plugin**: Currently commented out (lines 31-36 in `main.rs`) - needs investigation
+- **Single-Instance Plugin**: Not implemented. The `tauri-plugin-single-instance` dependency was
+  removed while unused; re-add it when implementing. Without it, a second launch competes with the
+  first for the serial port and the Discord IPC pipe.
 - **Shutdown Polling**: Uses blocking thread with polling flag - should use proper Tauri shutdown hooks
 - **Frontend i18n**: Hardcoded Spanish labels - needs extraction to translation files
 - **Tests**: Limited test coverage - add tests for critical business logic
