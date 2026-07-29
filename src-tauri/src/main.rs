@@ -38,6 +38,9 @@ async fn main() {
             commands::controller_start,
             commands::ds_set_voice_settings_command,
             commands::serial_set_rgb,
+            commands::discord_credentials_status,
+            commands::discord_set_credentials,
+            commands::discord_clear_credentials,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

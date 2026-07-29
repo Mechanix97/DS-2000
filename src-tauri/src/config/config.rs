@@ -1,39 +1,69 @@
-use crate::secrets::{DEFAULT_REDIRECT_URL, DISCORD_CLIENT_ID, DISCORD_SECRET_KEY, ENCRYPTION_KEY};
+//! Persistent application settings.
+//!
+//! Everything here is non-sensitive and stored as readable JSON, which keeps the file easy to
+//! inspect and to attach to a bug report. Secrets live in the OS keyring instead — see
+//! [`crate::credentials`].
+
+use crate::credentials::{self, CredentialError, Secret};
 use common::rgb_update::RGBConfig;
 
-use aes_gcm::aead::{Aead, KeyInit};
-use aes_gcm::{Aes256Gcm, Nonce};
 use directories::BaseDirs;
-use hex::decode;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::Path;
+use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicBool};
+use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
-use tracing::debug;
+use tracing::{debug, info, warn};
 
-const CONFIG_SAVE_INTERVAL: u64 = 60;
+const CONFIG_SAVE_INTERVAL: Duration = Duration::from_secs(60);
+const CONFIG_DIR: &str = "Mechardo";
+const CONFIG_FILE: &str = "config.json";
 
-pub struct Config {
-    inner: Arc<Mutex<ConfigInfo>>,
-    refresh: Arc<AtomicBool>,
-    join_handle: Option<JoinHandle<()>>,
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("could not locate the user's configuration directory")]
+    NoConfigDir,
+
+    #[error("configuration I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("configuration is not valid JSON: {0}")]
+    Serde(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Credential(#[from] CredentialError),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct ConfigInfo {
-    pub discord_client_id: String,
-    pub discord_secret_key: String,
-    pub redirect_url: String,
-    pub discord_access_token: Option<String>,
-    pub discord_refresh_token: Option<String>,
+/// Settings persisted to disk. Nothing in here is sensitive.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct Settings {
+    /// Client id of the Discord application registered by the user.
+    ///
+    /// Not a secret: Discord displays it in the authorisation modal. The matching client secret
+    /// is in the keyring.
+    pub discord_client_id: Option<String>,
+
+    /// Serial port used last, tried first on the next launch to skip rescanning.
     pub last_used_port: Option<String>,
+
     pub rgb_config: RGBConfig,
+
+    /// UI language tag, e.g. `"es"` or `"en"`. `None` means follow the system.
+    pub language: Option<String>,
+
+    pub start_with_windows: bool,
+    pub start_minimized: bool,
+}
+
+pub struct Config {
+    inner: Arc<Mutex<Settings>>,
+    dirty: Arc<AtomicBool>,
+    join_handle: Option<JoinHandle<()>>,
 }
 
 impl Default for Config {
@@ -44,176 +74,255 @@ impl Default for Config {
 
 impl Config {
     pub fn new() -> Self {
-        let config_info = ConfigInfo {
-            discord_client_id: DISCORD_CLIENT_ID.to_string(),
-            discord_secret_key: DISCORD_SECRET_KEY.to_string(),
-            redirect_url: DEFAULT_REDIRECT_URL.to_string(),
-            discord_access_token: None,
-            discord_refresh_token: None,
-            last_used_port: None,
-            rgb_config: RGBConfig::default(),
-        };
-
         Self {
-            inner: Arc::new(Mutex::new(config_info)),
-            refresh: Arc::new(AtomicBool::new(false)),
+            inner: Arc::new(Mutex::new(Settings::default())),
+            dirty: Arc::new(AtomicBool::new(false)),
             join_handle: None,
         }
     }
 
-    pub async fn start(&mut self) {
-        debug!("starting config thread");
-        let inner_clone = self.inner.clone();
-        let refresh_clone = self.refresh.clone();
-
-        let join_handle = tokio::spawn(async move {
-            loop {
-                sleep(Duration::from_secs(CONFIG_SAVE_INTERVAL)).await;
-                if refresh_clone.load(atomic::Ordering::Relaxed) {
-                    save_inner(inner_clone.clone()).await;
-                    refresh_clone.store(false, atomic::Ordering::Relaxed);
-                }
-            }
-        });
-        self.join_handle = Some(join_handle);
-    }
-
+    /// Loads settings from disk.
+    ///
+    /// A missing, unreadable or malformed file is not fatal: the defaults are kept and the reason
+    /// is logged. Losing preferences is a far better outcome than refusing to start, which is
+    /// what the previous implementation did.
     pub async fn load(&mut self) {
-        if let Some(base_dirs) = BaseDirs::new() {
-            let appdata_path = base_dirs.config_dir().join("Mechardo");
-            if !appdata_path.exists() {
-                std::fs::create_dir_all(&appdata_path).unwrap();
+        let path = match config_file_path() {
+            Ok(path) => path,
+            Err(err) => {
+                warn!("Could not determine the config path, using defaults: {err}");
                 return;
             }
-            let config_file = appdata_path.join("ds-config");
-            if !Path::new(&config_file).exists() {
-                self.save().await;
-            } else {
-                match File::open(config_file) {
-                    Ok(mut file) => {
-                        let mut lock = self.inner.lock().await;
-                        let mut nonce_bytes = [0u8; 12];
-                        file.read_exact(&mut nonce_bytes)
-                            .expect("Failed to read nonce");
-                        let nonce = Nonce::from_slice(&nonce_bytes);
+        };
 
-                        let mut ciphertext = Vec::new();
-                        file.read_to_end(&mut ciphertext)
-                            .expect("Failed to read ciphertext");
+        if !path.exists() {
+            info!("No configuration file yet, starting with defaults");
+            return;
+        }
 
-                        let key_hex = ENCRYPTION_KEY.to_string();
-                        let key_bytes =
-                            decode(key_hex).expect("Invalid hex format in ENCRYPTION_KEY");
-                        let key: [u8; 32] =
-                            key_bytes.try_into().expect("Key must be exactly 32 bytes");
-
-                        let cipher =
-                            Aes256Gcm::new_from_slice(&key).expect("Failed to create cipher");
-                        let decrypted = cipher
-                            .decrypt(nonce, ciphertext.as_ref())
-                            .expect("Decryption failed");
-
-                        *lock = serde_json::from_slice(&decrypted).unwrap_or(Default::default());
-                        lock.discord_client_id = DISCORD_CLIENT_ID.to_string();
-                        lock.discord_secret_key = DISCORD_SECRET_KEY.to_string();
-                    }
-                    Err(_) => {
-                        self.save().await;
-                    }
-                };
+        match read_settings(&path) {
+            Ok(settings) => {
+                *self.inner.lock().await = settings;
+                debug!("Configuration loaded from {}", path.display());
+            }
+            Err(err) => {
+                warn!(
+                    "Could not read {}, continuing with defaults: {err}",
+                    path.display()
+                );
             }
         }
     }
 
-    pub async fn save(&self) {
-        save_inner(self.inner.clone()).await;
+    /// Starts the background task that flushes pending changes periodically.
+    pub async fn start(&mut self) {
+        debug!("Starting config save task");
+        let inner = self.inner.clone();
+        let dirty = self.dirty.clone();
+
+        self.join_handle = Some(tokio::spawn(async move {
+            loop {
+                sleep(CONFIG_SAVE_INTERVAL).await;
+                if dirty.swap(false, atomic::Ordering::Relaxed) {
+                    let settings = inner.lock().await.clone();
+                    if let Err(err) = save_settings(&settings) {
+                        warn!("Could not save configuration: {err}");
+                        dirty.store(true, atomic::Ordering::Relaxed);
+                    }
+                }
+            }
+        }));
     }
 
-    pub async fn get_discord_client_id(&self) -> String {
+    /// Writes the current settings to disk immediately.
+    pub async fn save(&self) -> Result<(), ConfigError> {
+        let settings = self.inner.lock().await.clone();
+        save_settings(&settings)?;
+        self.dirty.store(false, atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    pub async fn discord_client_id(&self) -> Option<String> {
         self.inner.lock().await.discord_client_id.clone()
     }
 
-    pub async fn get_discord_secret_key(&self) -> String {
-        self.inner.lock().await.discord_secret_key.clone()
-    }
-
-    pub async fn get_redirect_url(&self) -> String {
-        self.inner.lock().await.redirect_url.clone()
-    }
-
-    pub async fn get_discord_access_token(&self) -> Option<String> {
-        self.inner.lock().await.discord_access_token.clone()
-    }
-
-    pub async fn get_discord_refresh_token(&self) -> Option<String> {
-        self.inner.lock().await.discord_refresh_token.clone()
-    }
-
-    pub async fn get_last_used_port(&self) -> Option<String> {
+    pub async fn last_used_port(&self) -> Option<String> {
         self.inner.lock().await.last_used_port.clone()
+    }
+
+    pub async fn rgb_config(&self) -> RGBConfig {
+        self.inner.lock().await.rgb_config.clone()
+    }
+
+    pub async fn settings(&self) -> Settings {
+        self.inner.lock().await.clone()
+    }
+
+    /// Stores the Discord application credentials the user pasted into the UI.
+    ///
+    /// The id goes to the config file and the secret to the keyring. Any previously stored OAuth
+    /// tokens are dropped, because they were issued by whatever application was configured before
+    /// and are meaningless for the new one.
+    pub async fn set_discord_credentials(
+        &mut self,
+        client_id: &str,
+        client_secret: &str,
+    ) -> Result<(), ConfigError> {
+        credentials::write(Secret::ClientSecret, client_secret)?;
+        credentials::clear_tokens()?;
+
+        self.inner.lock().await.discord_client_id = Some(client_id.to_owned());
+        self.save().await
+    }
+
+    /// Forgets the Discord application entirely: id, secret and tokens.
+    pub async fn clear_discord_credentials(&mut self) -> Result<(), ConfigError> {
+        credentials::clear_all()?;
+        self.inner.lock().await.discord_client_id = None;
+        self.save().await
+    }
+
+    /// True when both halves of the Discord application registration are present.
+    ///
+    /// Either half alone is useless, so the workers stay idle until both exist.
+    pub async fn has_discord_credentials(&self) -> bool {
+        if self.inner.lock().await.discord_client_id.is_none() {
+            return false;
+        }
+        matches!(credentials::read(Secret::ClientSecret), Ok(Some(_)))
     }
 
     pub async fn update_tokens(
         &mut self,
         access_token: Option<String>,
         refresh_token: Option<String>,
-    ) {
-        let mut lock = self.inner.lock().await;
-
-        if lock.discord_access_token != access_token || lock.discord_refresh_token != refresh_token
-        {
-            lock.discord_access_token = access_token;
-            lock.discord_refresh_token = refresh_token;
-            self.refresh.store(true, atomic::Ordering::Relaxed);
-        }
+    ) -> Result<(), ConfigError> {
+        store_optional_secret(Secret::AccessToken, access_token)?;
+        store_optional_secret(Secret::RefreshToken, refresh_token)?;
+        Ok(())
     }
 
     pub async fn update_last_used_port(&mut self, last_used_port: Option<String>) {
-        let mut lock = self.inner.lock().await;
-
-        if lock.last_used_port != last_used_port {
-            lock.last_used_port = last_used_port;
-            self.refresh.store(true, atomic::Ordering::Relaxed);
+        let mut settings = self.inner.lock().await;
+        if settings.last_used_port != last_used_port {
+            settings.last_used_port = last_used_port;
+            self.dirty.store(true, atomic::Ordering::Relaxed);
         }
     }
 
     pub async fn update_rgb(&mut self, rgb_update: &RGBConfig) {
-        let mut lock = self.inner.lock().await;
-        lock.rgb_config = rgb_update.clone();
-        self.refresh.store(true, atomic::Ordering::Relaxed);
+        let mut settings = self.inner.lock().await;
+        if settings.rgb_config != *rgb_update {
+            settings.rgb_config = rgb_update.clone();
+            self.dirty.store(true, atomic::Ordering::Relaxed);
+        }
+    }
+
+    pub async fn update_startup_preferences(
+        &mut self,
+        start_with_windows: bool,
+        start_minimized: bool,
+    ) {
+        let mut settings = self.inner.lock().await;
+        if settings.start_with_windows != start_with_windows
+            || settings.start_minimized != start_minimized
+        {
+            settings.start_with_windows = start_with_windows;
+            settings.start_minimized = start_minimized;
+            self.dirty.store(true, atomic::Ordering::Relaxed);
+        }
+    }
+
+    pub async fn update_language(&mut self, language: Option<String>) {
+        let mut settings = self.inner.lock().await;
+        if settings.language != language {
+            settings.language = language;
+            self.dirty.store(true, atomic::Ordering::Relaxed);
+        }
     }
 }
 
-async fn save_inner(inner: Arc<Mutex<ConfigInfo>>) {
-    debug!("Saving configuration to file");
-    if let Some(base_dirs) = BaseDirs::new() {
-        let appdata_path = base_dirs.config_dir().join("Mechardo");
-        if !appdata_path.exists() {
-            std::fs::create_dir_all(&appdata_path).unwrap();
+impl Drop for Config {
+    fn drop(&mut self) {
+        if let Some(handle) = self.join_handle.take() {
+            handle.abort();
         }
+    }
+}
 
-        let mut lock = inner.lock().await;
+fn store_optional_secret(secret: Secret, value: Option<String>) -> Result<(), CredentialError> {
+    match value {
+        Some(value) => credentials::write(secret, &value),
+        None => credentials::clear(secret),
+    }
+}
 
-        lock.discord_client_id = DISCORD_CLIENT_ID.to_string();
-        lock.discord_secret_key = DISCORD_SECRET_KEY.to_string();
+fn config_file_path() -> Result<PathBuf, ConfigError> {
+    let base_dirs = BaseDirs::new().ok_or(ConfigError::NoConfigDir)?;
+    Ok(base_dirs.config_dir().join(CONFIG_DIR).join(CONFIG_FILE))
+}
 
-        let json = serde_json::to_string_pretty(&*lock).unwrap();
+fn read_settings(path: &PathBuf) -> Result<Settings, ConfigError> {
+    let raw = std::fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&raw)?)
+}
 
-        let key_hex = ENCRYPTION_KEY.to_string();
-        let key_bytes = decode(key_hex).expect("Invalid hex format in ENCRYPTION_KEY");
-        let key: [u8; 32] = key_bytes.try_into().expect("Key must be exactly 32 bytes");
-        let cipher = Aes256Gcm::new_from_slice(&key).expect("Failed to create cipher");
+fn save_settings(settings: &Settings) -> Result<(), ConfigError> {
+    let path = config_file_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(settings)?)?;
+    debug!("Configuration saved to {}", path.display());
+    Ok(())
+}
 
-        let mut nonce_bytes = [0u8; 12];
-        rand::rng().fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let ciphertext = cipher
-            .encrypt(nonce, json.as_bytes())
-            .expect("Encryption failed");
-        let file_path = appdata_path.join("ds-config");
-        let mut file = File::create(file_path).expect("Cannot create file");
-        file.write_all(&nonce_bytes).unwrap();
-        file.write_all(&ciphertext).unwrap();
+    #[test]
+    fn defaults_have_no_discord_application_configured() {
+        let settings = Settings::default();
+        assert!(settings.discord_client_id.is_none());
+        assert!(!settings.start_with_windows);
+        assert!(!settings.start_minimized);
+    }
+
+    #[test]
+    fn settings_survive_a_serialisation_round_trip() {
+        let settings = Settings {
+            discord_client_id: Some("123456789".to_owned()),
+            last_used_port: Some("COM3".to_owned()),
+            language: Some("es".to_owned()),
+            start_with_windows: true,
+            ..Settings::default()
+        };
+
+        let json = serde_json::to_string(&settings).expect("serialises");
+        let parsed: Settings = serde_json::from_str(&json).expect("deserialises");
+
+        assert_eq!(settings, parsed);
+    }
+
+    #[test]
+    fn unknown_and_missing_fields_fall_back_to_defaults() {
+        // Guards forward and backward compatibility: a config written by another version must not
+        // stop the app from starting.
+        let parsed: Settings = serde_json::from_str(r#"{"language":"en","from_the_future":42}"#)
+            .expect("tolerates unknown and missing fields");
+
+        assert_eq!(parsed.language.as_deref(), Some("en"));
+        assert_eq!(parsed.rgb_config, RGBConfig::default());
+        assert!(parsed.discord_client_id.is_none());
+    }
+
+    #[test]
+    fn no_secret_is_serialised_into_the_config_file() {
+        // The client secret and OAuth tokens belong in the keyring. If a field for them ever
+        // appears here, this test should fail and force the decision to be revisited.
+        let json = serde_json::to_string(&Settings::default()).expect("serialises");
+        assert!(!json.contains("secret"));
+        assert!(!json.contains("token"));
     }
 }
