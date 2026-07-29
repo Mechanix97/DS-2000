@@ -8,7 +8,7 @@ Cargo.lock
 discord.env
 src-tauri/src/config/secrets.rs
 
-# Documentación de trabajo interna de Claude Code: local a esta máquina.
-# Se ignora sólo esta subcarpeta, para que el resto de .claude/ (settings, skills)
-# pueda versionarse si algún día hace falta.
+# Claude Code internal working notes: local to this machine.
+# Only this subfolder is ignored, so the rest of .claude/ (settings, skills) can be
+# versioned if it ever becomes useful.
 .claude/internal/
