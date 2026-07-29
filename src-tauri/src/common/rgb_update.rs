@@ -13,7 +13,8 @@ pub enum RGBMode {
     Wave { led1: LedRgb, led2: LedRgb },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+/// Three bytes, so it is `Copy`: passing it by value is cheaper than a reference.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LedRgb {
     pub red: u8,
     pub green: u8,
