@@ -1,13 +1,14 @@
 use crate::error::SerialPortError;
-use crate::serial_message::SerialMessage;
 use crate::serial_state::InCallMessage;
 use crate::serial_state::InMessage;
 use crate::serial_state::OutMessage;
 use crate::serial_state::SerialPortHandler;
 use crate::serial_state::SerialPortState;
+use crate::serial_state::SerialWorkerEvent;
 
 use common::rgb_update::RGBConfig;
 
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tracing::debug;
 
@@ -16,8 +17,14 @@ pub struct SerialWorker {
 }
 
 impl SerialWorker {
-    pub async fn new(baudrate: u32, timeout: Duration) -> Self {
-        let serial_port_handler = SerialPortState::spawn(baudrate, timeout).await;
+    /// Creates the worker. Frames and connection changes are announced on `observer` as they
+    /// happen; nothing has to poll this worker.
+    pub async fn new(
+        baudrate: u32,
+        timeout: Duration,
+        observer: mpsc::UnboundedSender<SerialWorkerEvent>,
+    ) -> Self {
+        let serial_port_handler = SerialPortState::spawn(baudrate, timeout, observer).await;
 
         Self {
             serial_port_handler,
@@ -43,18 +50,6 @@ impl SerialWorker {
             return Ok(None);
         };
         Ok(rt)
-    }
-
-    pub async fn get_pending_messages(&mut self) -> Result<Vec<SerialMessage>, SerialPortError> {
-        let om: OutMessage = self
-            .serial_port_handler
-            .call(InCallMessage::PendingMessages)
-            .await
-            .map_err(SerialPortError::GenServerError)?;
-        let OutMessage::PendingMessages(pm) = om else {
-            return Ok(vec![]);
-        };
-        Ok(pm)
     }
 
     pub async fn set_voice_settings(

@@ -1,22 +1,13 @@
-use crate::{controller::Controller, error::ControllerError};
+use crate::controller::Controller;
+use crate::coordinator::UiRefreshHandle;
 use common::rgb_update::{LedRgb, RGBConfig, RGBMode};
 use config::credentials::URL_DISCORD_SETUP_GUIDE;
 
 use serde::Serialize;
-use serial::messages::button::Button;
-use serial::serial_message::SerialMessage;
 use std::sync::Arc;
-use std::time::SystemTime;
-use tauri::{AppHandle, Emitter, State};
+use tauri::State;
 use tokio::sync::Mutex;
-use tokio::time::{Duration, sleep};
-use tracing::{debug, warn};
-
-const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
-const DISCORD_VOICE_SETTINGS_EVENT: &str = "DISCORD_VOICE_SETTINGS_EVENT";
-const SERIAL_CONNECTION_STATUS_EVENT: &str = "SERIAL_CONNECTION_STATUS_EVENT";
-
-const PERIODICAL_SERIAL_UPDATE: Duration = Duration::from_millis(100);
+use tracing::debug;
 
 /// What the Discord tab needs to render itself.
 ///
@@ -29,12 +20,6 @@ pub struct DiscordCredentialsStatus {
     pub connected: bool,
     pub setup_guide_url: &'static str,
     pub redirect_uri: &'static str,
-}
-
-#[derive(Serialize, Clone, PartialEq, Eq)]
-struct VoiceSettingsPayload {
-    mute: bool,
-    deafen: bool,
 }
 
 #[tauri::command]
@@ -117,15 +102,12 @@ pub async fn discord_clear_credentials(
 }
 
 #[tauri::command]
-pub async fn controller_start(
-    app: AppHandle,
-    controller: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<(), String> {
-    debug!("Starting controller");
-    let controller_clone = controller.inner().clone();
-    let app_clone = app.clone();
-    let handle = tokio::spawn(async move { background_loop(app_clone, controller_clone).await });
-    controller.lock().await.background_join_handle = Some(handle);
+pub async fn controller_start(ui_refresh: State<'_, UiRefreshHandle>) -> Result<(), String> {
+    // The coordinator is already running by the time the frontend loads; the workers were started
+    // before the window existed. All this does now is ask for the current state, which the
+    // frontend needs because nothing was emitted while there was no window to receive it.
+    debug!("Frontend ready, resending the current state");
+    let _ = ui_refresh.send(());
     Ok(())
 }
 
@@ -181,154 +163,5 @@ pub async fn serial_set_rgb(
         .map_err(|err| err.to_string())?;
 
     debug!("RGB update: {update:?}");
-    Ok(())
-}
-
-/// Values last pushed to the webview, so unchanged ones are not sent again.
-///
-/// Every emit wakes the WebView2 process to run JavaScript. Emitting unconditionally at 10 Hz
-/// meant waking a Chromium process 20-30 times a second to redraw two icons that had not moved,
-/// which dominated the app's idle cost.
-#[derive(Default)]
-struct EmittedState {
-    discord_connected: Option<bool>,
-    serial_connected: Option<bool>,
-    voice_settings: Option<VoiceSettingsPayload>,
-}
-
-impl EmittedState {
-    fn emit_if_changed<T: PartialEq + Clone + serde::Serialize>(
-        app: &AppHandle,
-        event: &str,
-        slot: &mut Option<T>,
-        value: T,
-    ) -> Result<(), ControllerError> {
-        if slot.as_ref() == Some(&value) {
-            return Ok(());
-        }
-        app.emit(event, value.clone())?;
-        *slot = Some(value);
-        Ok(())
-    }
-}
-
-async fn background_loop(
-    app: AppHandle,
-    controller: Arc<Mutex<Controller>>,
-) -> Result<(), ControllerError> {
-    let mut voice_settings = controller
-        .lock()
-        .await
-        .discord_worker
-        .get_voice_settings()
-        .await;
-    let mut last_serial_update = SystemTime::now();
-    let mut emitted = EmittedState::default();
-
-    debug!("Starting background loop");
-
-    loop {
-        let mut controller_lock = controller.lock().await;
-
-        let discord_connected = controller_lock.discord_worker.is_connected().await?;
-        EmittedState::emit_if_changed(
-            &app,
-            DISCORD_CONNECTION_STATUS_EVENT,
-            &mut emitted.discord_connected,
-            discord_connected,
-        )?;
-
-        let serial_connected = controller_lock.serial_worker.is_connected().await?;
-        EmittedState::emit_if_changed(
-            &app,
-            SERIAL_CONNECTION_STATUS_EVENT,
-            &mut emitted.serial_connected,
-            serial_connected,
-        )?;
-
-        if serial_connected
-            && SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE
-        {
-            last_serial_update = SystemTime::now();
-            controller_lock
-                .serial_worker
-                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
-                .await?;
-        }
-
-        let pending_serial_messages = controller_lock.serial_worker.get_pending_messages().await?;
-
-        for pending_message in pending_serial_messages {
-            match pending_message {
-                SerialMessage::Button(msg) => match msg.button {
-                    Button::MuteButton => {
-                        voice_settings.mute = !voice_settings.mute;
-                        push_voice_settings(&mut controller_lock, &voice_settings).await?;
-                    }
-                    Button::DeafenButton => {
-                        voice_settings.deafen = !voice_settings.deafen;
-                        push_voice_settings(&mut controller_lock, &voice_settings).await?;
-                    }
-                    Button::DisconnectButton => {
-                        controller_lock.discord_worker.disconnect().await?;
-                    }
-                },
-                other => debug!("Unhandled serial message: {other:?}"),
-            }
-        }
-
-        let discord_voice_settings = controller_lock.discord_worker.get_voice_settings().await;
-
-        if voice_settings != discord_voice_settings {
-            voice_settings = discord_voice_settings;
-            debug!(
-                "Voice settings changed — mute: {} deafen: {}",
-                voice_settings.mute, voice_settings.deafen
-            );
-        }
-
-        let access_token = controller_lock.discord_worker.get_access_token().await?;
-        let refresh_token = controller_lock.discord_worker.get_refresh_token().await?;
-        if let Err(err) = controller_lock
-            .config
-            .update_tokens(access_token, refresh_token)
-            .await
-        {
-            warn!("Could not persist the Discord tokens: {err}");
-        }
-
-        let last_port_used = controller_lock.serial_worker.get_port_name().await?;
-        controller_lock
-            .config
-            .update_last_used_port(last_port_used)
-            .await;
-
-        EmittedState::emit_if_changed(
-            &app,
-            DISCORD_VOICE_SETTINGS_EVENT,
-            &mut emitted.voice_settings,
-            VoiceSettingsPayload {
-                mute: voice_settings.mute,
-                deafen: voice_settings.deafen,
-            },
-        )?;
-
-        drop(controller_lock);
-        sleep(Duration::from_millis(100)).await;
-    }
-}
-
-async fn push_voice_settings(
-    controller: &mut Controller,
-    voice_settings: &discord::discord_state::DiscordVoiceSettings,
-) -> Result<(), ControllerError> {
-    // Deafening implies muting, mirroring what Discord itself enforces.
-    controller
-        .discord_worker
-        .set_voice_settings(
-            voice_settings.mute || voice_settings.deafen,
-            voice_settings.deafen,
-        )
-        .await?;
     Ok(())
 }

@@ -16,7 +16,6 @@ use crate::{error::SerialPortError, serial_message::SerialMessage};
 use spawned_concurrency::tasks::{
     CallResponse, CastResponse, GenServer, GenServerHandle, send_after,
 };
-use std::collections::VecDeque;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tracing::{debug, info, warn};
@@ -26,19 +25,12 @@ const RECONNECT_BACKOFF_MIN: Duration = Duration::from_secs(1);
 /// Ceiling for the backoff. Scanning every port has a cost, so an absent device settles here.
 const RECONNECT_BACKOFF_MAX: Duration = Duration::from_secs(15);
 
-/// Bounds the queue so a device flooding the link cannot grow it without limit.
-///
-/// Reaching this means the consumer stopped draining, which is a bug rather than a legitimate
-/// state, so the oldest messages are dropped and the fact is logged.
-const MAX_QUEUED_MESSAGES: usize = 256;
-
 pub type SerialPortHandler = GenServerHandle<SerialPortState>;
 
 #[derive(Clone)]
 pub enum InCallMessage {
     PortName,
     Shutdown,
-    PendingMessages,
     SerialPortStatus,
 }
 
@@ -56,8 +48,17 @@ pub enum InMessage {
 pub enum OutMessage {
     Done,
     PortName(Option<String>),
-    PendingMessages(Vec<SerialMessage>),
     SerialPortStatus(bool),
+}
+
+/// Something worth telling the controller about.
+///
+/// Emitted as it happens rather than queued for a poller, so a button press reaches Discord
+/// immediately instead of waiting up to 100 ms for the next drain.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum SerialWorkerEvent {
+    Message(SerialMessage),
+    ConnectionChanged { connected: bool },
 }
 
 #[derive(Clone)]
@@ -65,27 +66,33 @@ pub struct SerialPortState {
     port: Port,
     baudrate: u32,
     timeout: Duration,
+    /// Where frames and connection changes are announced. The controller listens here.
+    observer: mpsc::UnboundedSender<SerialWorkerEvent>,
+    /// Last connection state announced, so `ConnectionChanged` really means changed.
+    announced_connected: bool,
     reconnect_backoff: Duration,
     /// Guards against several reconnect timers piling up, which would defeat the backoff.
     reconnect_scheduled: bool,
     shutdown: bool,
-    // TODO: phase 4 replaces this with a push to the controller. It stays for now because the
-    // controller still drains it from its own loop.
-    message_queue: VecDeque<SerialMessage>,
 }
 
 impl SerialPortState {
-    pub async fn spawn(baudrate: u32, timeout: Duration) -> SerialPortHandler {
+    pub async fn spawn(
+        baudrate: u32,
+        timeout: Duration,
+        observer: mpsc::UnboundedSender<SerialWorkerEvent>,
+    ) -> SerialPortHandler {
         let (events_tx, mut events_rx) = mpsc::unbounded_channel();
 
         let state = Self {
             port: Port::new(events_tx),
             baudrate,
             timeout,
+            observer,
+            announced_connected: false,
             reconnect_backoff: RECONNECT_BACKOFF_MIN,
             reconnect_scheduled: false,
             shutdown: false,
-            message_queue: VecDeque::new(),
         };
         let handle = state.start();
 
@@ -117,12 +124,16 @@ impl SerialPortState {
         self.reconnect_backoff = (self.reconnect_backoff * 2).min(RECONNECT_BACKOFF_MAX);
     }
 
-    fn enqueue(&mut self, message: SerialMessage) {
-        if self.message_queue.len() >= MAX_QUEUED_MESSAGES {
-            warn!("Serial message queue is full, dropping the oldest message");
-            self.message_queue.pop_front();
+    /// Announces a connection transition, once per transition.
+    fn announce_connection(&mut self) {
+        let connected = self.port.is_connected();
+        if connected == self.announced_connected {
+            return;
         }
-        self.message_queue.push_back(message);
+        self.announced_connected = connected;
+        let _ = self
+            .observer
+            .send(SerialWorkerEvent::ConnectionChanged { connected });
     }
 }
 
@@ -175,17 +186,20 @@ impl GenServer for SerialPortState {
                 }
 
                 self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
+                self.announce_connection();
                 CastResponse::NoReply(self)
             }
 
             InMessage::Serial(SerialEvent::Message(message)) => {
-                self.enqueue(message);
+                // Straight to the controller: no queue, no waiting for someone to drain it.
+                let _ = self.observer.send(SerialWorkerEvent::Message(message));
                 CastResponse::NoReply(self)
             }
 
             InMessage::Serial(SerialEvent::Disconnected) => {
                 info!("Serial device disconnected, will try to reconnect");
                 self.port.disconnect().await;
+                self.announce_connection();
                 self.schedule_reconnect(handle);
                 CastResponse::NoReply(self)
             }
@@ -234,10 +248,6 @@ impl GenServer for SerialPortState {
                 self.port.disconnect().await;
                 CallResponse::Reply(self, OutMessage::Done)
             }
-            InCallMessage::PendingMessages => {
-                let pending = self.message_queue.drain(..).collect::<Vec<_>>();
-                CallResponse::Reply(self, OutMessage::PendingMessages(pending))
-            }
             InCallMessage::SerialPortStatus => {
                 let connected = self.port.is_connected();
                 CallResponse::Reply(self, OutMessage::SerialPortStatus(connected))
@@ -249,48 +259,48 @@ impl GenServer for SerialPortState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::button::{Button, ButtonMessage};
-    use crate::messages::ping::PingMessage;
 
-    fn state() -> SerialPortState {
-        let (tx, _rx) = mpsc::unbounded_channel();
-        SerialPortState {
-            port: Port::new(tx),
-            baudrate: 115200,
-            timeout: Duration::from_millis(1000),
-            reconnect_backoff: RECONNECT_BACKOFF_MIN,
-            reconnect_scheduled: false,
-            shutdown: false,
-            message_queue: VecDeque::new(),
-        }
+    fn state() -> (SerialPortState, mpsc::UnboundedReceiver<SerialWorkerEvent>) {
+        let (port_tx, _port_rx) = mpsc::unbounded_channel();
+        let (observer, observed) = mpsc::unbounded_channel();
+        (
+            SerialPortState {
+                port: Port::new(port_tx),
+                baudrate: 115200,
+                timeout: Duration::from_millis(1000),
+                observer,
+                announced_connected: false,
+                reconnect_backoff: RECONNECT_BACKOFF_MIN,
+                reconnect_scheduled: false,
+                shutdown: false,
+            },
+            observed,
+        )
     }
 
     #[test]
-    fn queued_messages_keep_their_order() {
-        let mut state = state();
-        state.enqueue(SerialMessage::Ping(PingMessage {}));
-        state.enqueue(SerialMessage::Button(ButtonMessage {
-            button: Button::MuteButton,
-        }));
+    fn a_connection_change_is_announced_once_per_transition() {
+        let (mut state, mut observed) = state();
 
-        let drained = state.message_queue.drain(..).collect::<Vec<_>>();
-        assert_eq!(drained.len(), 2);
-        assert_eq!(drained[0], SerialMessage::Ping(PingMessage {}));
-    }
+        // Still disconnected, so there is nothing to announce.
+        state.announce_connection();
+        assert!(observed.try_recv().is_err());
 
-    #[test]
-    fn the_queue_is_bounded_and_drops_the_oldest() {
-        let mut state = state();
-        for _ in 0..MAX_QUEUED_MESSAGES + 10 {
-            state.enqueue(SerialMessage::Ping(PingMessage {}));
-        }
+        state.announced_connected = true;
+        state.announce_connection();
 
-        assert_eq!(state.message_queue.len(), MAX_QUEUED_MESSAGES);
+        assert_eq!(
+            observed.try_recv().expect("an announcement"),
+            SerialWorkerEvent::ConnectionChanged { connected: false }
+        );
+        // A second call with no further change stays quiet.
+        state.announce_connection();
+        assert!(observed.try_recv().is_err());
     }
 
     #[test]
     fn the_reconnect_backoff_grows_and_then_settles_at_the_ceiling() {
-        let mut state = state();
+        let (mut state, _observed) = state();
         let mut delays = Vec::new();
 
         for _ in 0..8 {

@@ -3,37 +3,59 @@ use crate::error::ControllerError;
 use config::config::Config;
 use config::credentials::{self, DISCORD_REDIRECT_URI, Secret};
 use discord::credentials::DiscordCredentials;
+use discord::discord_state::DiscordWorkerEvent;
 use discord::discord_worker::DiscordWorker;
+use serial::serial_state::SerialWorkerEvent;
 use serial::serial_worker::SerialWorker;
 
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tracing::{debug, warn};
 
 const DEFAULT_SERIAL_BAUDRATE: u32 = 115200;
 const DEFAULT_SERIAL_TIMEOUT: Duration = Duration::from_millis(1000);
 
+/// The receiving ends of the workers' event channels, handed to the coordinator.
+///
+/// Returned separately from the `Controller` because the coordinator needs to own them while the
+/// controller itself lives behind a mutex shared with the Tauri command handlers.
+pub struct WorkerEvents {
+    pub discord: mpsc::UnboundedReceiver<DiscordWorkerEvent>,
+    pub serial: mpsc::UnboundedReceiver<SerialWorkerEvent>,
+}
+
 pub struct Controller {
     pub discord_worker: DiscordWorker,
     pub serial_worker: SerialWorker,
     pub config: Config,
-    pub background_join_handle: Option<tokio::task::JoinHandle<Result<(), ControllerError>>>,
+    pub coordinator_join_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Controller {
-    pub async fn new() -> Self {
+    pub async fn new() -> (Self, WorkerEvents) {
         let mut config = Config::new();
         config.load().await;
 
-        let discord_worker = DiscordWorker::new(load_discord_credentials(&config).await).await;
-        let serial_worker =
-            SerialWorker::new(DEFAULT_SERIAL_BAUDRATE, DEFAULT_SERIAL_TIMEOUT).await;
+        let (discord_tx, discord_rx) = mpsc::unbounded_channel();
+        let (serial_tx, serial_rx) = mpsc::unbounded_channel();
 
-        Controller {
-            discord_worker,
-            serial_worker,
-            config,
-            background_join_handle: None,
-        }
+        let discord_worker =
+            DiscordWorker::new(load_discord_credentials(&config).await, discord_tx).await;
+        let serial_worker =
+            SerialWorker::new(DEFAULT_SERIAL_BAUDRATE, DEFAULT_SERIAL_TIMEOUT, serial_tx).await;
+
+        (
+            Controller {
+                discord_worker,
+                serial_worker,
+                config,
+                coordinator_join_handle: None,
+            },
+            WorkerEvents {
+                discord: discord_rx,
+                serial: serial_rx,
+            },
+        )
     }
 
     pub async fn start(&mut self) -> Result<(), ControllerError> {
@@ -82,7 +104,7 @@ impl Controller {
 
     pub async fn shutdown(&mut self) -> Result<(), ControllerError> {
         debug!("Shutting down controller");
-        if let Some(handle) = &mut self.background_join_handle {
+        if let Some(handle) = &mut self.coordinator_join_handle {
             handle.abort();
         }
         if let Err(err) = self.config.save().await {

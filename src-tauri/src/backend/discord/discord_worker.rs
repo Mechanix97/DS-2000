@@ -1,12 +1,13 @@
 use crate::credentials::DiscordCredentials;
 use crate::discord_state::{
-    DiscordState, DiscordStateHandler, DiscordVoiceSettings, InCallMessage, InMessage, OutMessage,
+    DiscordState, DiscordStateHandler, DiscordVoiceSettings, DiscordWorkerEvent, InCallMessage,
+    InMessage, OutMessage,
 };
 use crate::error::DiscordError;
 use crate::ipc::DiscordConnectionState;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 
 pub struct DiscordWorker {
     discord_handler: DiscordStateHandler,
@@ -18,9 +19,15 @@ pub struct DiscordWorker {
 impl DiscordWorker {
     /// Creates the worker. `credentials` is `None` until the user registers a Discord
     /// application; the worker stays idle in that case and starts on [`Self::set_credentials`].
-    pub async fn new(credentials: Option<DiscordCredentials>) -> Self {
+    ///
+    /// Changes are announced on `observer` as they happen; nothing has to poll this worker.
+    pub async fn new(
+        credentials: Option<DiscordCredentials>,
+        observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
+    ) -> Self {
         let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings::default()));
-        let discord_handler = DiscordState::spawn(credentials, voice_settings.clone()).await;
+        let discord_handler =
+            DiscordState::spawn(credentials, voice_settings.clone(), observer).await;
 
         Self {
             discord_handler,
@@ -121,7 +128,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_worker_without_credentials_reports_itself_disconnected() {
-        let mut worker = DiscordWorker::new(None).await;
+        let (observer, _observed) = mpsc::unbounded_channel();
+        let mut worker = DiscordWorker::new(None, observer).await;
 
         worker.start().await.expect("start is accepted");
 
@@ -133,7 +141,8 @@ mod tests {
     async fn an_idle_worker_never_reports_a_connection_on_its_own() {
         // Guards the "stay parked without credentials" behaviour: a regression here would mean
         // burning CPU retrying a connection that cannot succeed.
-        let mut worker = DiscordWorker::new(None).await;
+        let (observer, _observed) = mpsc::unbounded_channel();
+        let mut worker = DiscordWorker::new(None, observer).await;
         worker.start().await.expect("start is accepted");
 
         sleep(Duration::from_millis(300)).await;
@@ -169,7 +178,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
     async fn credentials_supplied_at_runtime_drive_a_full_connection() {
-        let mut worker = DiscordWorker::new(None).await;
+        let (observer, _observed) = mpsc::unbounded_channel();
+        let mut worker = DiscordWorker::new(None, observer).await;
         worker.start().await.expect("start is accepted");
 
         // Nothing should happen until credentials arrive: this is the state a fresh install is
@@ -211,7 +221,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "interactive: toggle mute in Discord within 30 seconds; run with --ignored"]
     async fn muting_from_discord_reaches_the_app_as_a_pushed_event() {
-        let mut worker = DiscordWorker::new(Some(credentials_from_env_file())).await;
+        let (observer, _observed) = mpsc::unbounded_channel();
+        let mut worker = DiscordWorker::new(Some(credentials_from_env_file()), observer).await;
         worker.start().await.expect("start is accepted");
 
         while !worker.is_connected().await.expect("status is readable") {
