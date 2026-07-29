@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="backendEvents.js"></script>
     <script type="module" src="serverButtonEvents.js"></script>
+    <script type="module" src="discordSetup.js"></script>
 </head>
 
 <body>
@@ -67,6 +68,7 @@
             <div class="channel-list">
                 <ul>
                     <li class="menu-item active" data-tab="rgb">RGB</li>
+                    <li class="menu-item" data-tab="discord">Discord</li>
                     <li class="menu-item" data-tab="configuraciones">Configuración</li>
                     <li class="menu-item" data-tab="acerca">Acerca</li>
                 </ul>
@@ -163,6 +165,43 @@
                         </div>
                     </div>
 
+                </div>
+            </div>
+
+            <!-- Pestaña Discord -->
+            <div class="tab-content" id="discord" style="display: none;">
+                <div class="tab-header">
+                    <h4>Discord</h4>
+                    <p>Conectá DS 2000 con tu cuenta de Discord.</p>
+                </div>
+                <div class="tab-body">
+                    <p class="discord-intro">
+                        Discord solo permite que una aplicación controle tu micrófono si vos mismo
+                        la creaste. Es gratis y se hace una sola vez.
+                    </p>
+                    <p class="link-button" id="discord-setup-guide">Ver instrucciones paso a paso</p>
+
+                    <div class="field">
+                        <label for="discord-client-id">Client ID</label>
+                        <input type="text" id="discord-client-id" autocomplete="off" spellcheck="false"
+                            placeholder="Ej: 713524519830028368">
+                    </div>
+                    <div class="field">
+                        <label for="discord-client-secret">Client Secret</label>
+                        <input type="password" id="discord-client-secret" autocomplete="off"
+                            spellcheck="false" placeholder="Se muestra una sola vez en Discord">
+                    </div>
+                    <p class="field-hint">
+                        Acordate de agregar <code id="discord-redirect-uri">http://localhost/</code>
+                        en OAuth2 &rarr; Redirects, o la conexión va a fallar.
+                    </p>
+
+                    <div class="button-row">
+                        <button id="discord-save-button" class="primary-button">Conectar</button>
+                        <button id="discord-clear-button" class="secondary-button">Desvincular</button>
+                    </div>
+
+                    <p id="discord-feedback" class="feedback" role="status"></p>
                 </div>
             </div>
 

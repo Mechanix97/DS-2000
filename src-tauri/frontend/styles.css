@@ -415,3 +415,120 @@ body {
     color: #f04747;
     /* Discord red for disconnected */
 }
+
+/* ---------------------------------------------------------------------------
+   Discord tab: the one-time setup form for the user's own Discord application
+   --------------------------------------------------------------------------- */
+
+.discord-intro {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #b9bbbe;
+    margin: 0 0 4px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+.field label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #b9bbbe;
+}
+
+.field input {
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #dcddde;
+    background-color: #202225;
+    border: 1px solid #202225;
+    border-radius: 4px;
+    outline: none;
+}
+
+.field input:focus {
+    border-color: #5865f2;
+}
+
+.field input::placeholder {
+    color: #72767d;
+}
+
+.field-hint {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b9bbbe;
+    margin: 12px 0 0;
+}
+
+.field-hint code {
+    padding: 2px 5px;
+    font-size: 12px;
+    color: #dcddde;
+    background-color: #202225;
+    border-radius: 3px;
+}
+
+.button-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.primary-button,
+.secondary-button {
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.primary-button {
+    color: #ffffff;
+    background-color: #5865f2;
+}
+
+.primary-button:hover:not(:disabled) {
+    background-color: #4752c4;
+}
+
+.secondary-button {
+    color: #dcddde;
+    background-color: #4f545c;
+}
+
+.secondary-button:hover:not(:disabled) {
+    background-color: #5d6269;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Reserves its line so the layout does not jump when a message appears. */
+.feedback {
+    min-height: 20px;
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: #b9bbbe;
+}
+
+.feedback.ok {
+    color: #43b581;
+}
+
+.feedback.error {
+    color: #f04747;
+}

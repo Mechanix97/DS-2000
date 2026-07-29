@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use config::config::ConfigError;
 use discord::error::DiscordError;
 use serial::error::SerialPortError;
 use std::time::SystemTimeError;
@@ -14,6 +15,9 @@ pub enum ControllerError {
 
     #[error("Error in serial interface: {0}")]
     SerialPortError(#[from] SerialPortError),
+
+    #[error("Configuration error: {0}")]
+    Config(#[from] ConfigError),
 
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
