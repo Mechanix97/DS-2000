@@ -3,4 +3,5 @@ pub mod discord_state;
 pub mod discord_worker;
 pub mod error;
 pub mod ipc;
+pub mod oauth;
 pub mod pipe_message;

@@ -1,10 +1,7 @@
 use crate::credentials::DiscordCredentials;
-use crate::discord_state::DiscordState;
-use crate::discord_state::DiscordStateHandler;
-use crate::discord_state::DiscordVoiceSettings;
-use crate::discord_state::InCallMessage;
-use crate::discord_state::InMessage;
-use crate::discord_state::OutMessage;
+use crate::discord_state::{
+    DiscordState, DiscordStateHandler, DiscordVoiceSettings, InCallMessage, InMessage, OutMessage,
+};
 use crate::error::DiscordError;
 use crate::ipc::DiscordConnectionState;
 
@@ -13,6 +10,8 @@ use tokio::sync::Mutex;
 
 pub struct DiscordWorker {
     discord_handler: DiscordStateHandler,
+    /// Shared with the state machine so reading the current voice state does not need a
+    /// round-trip through the actor mailbox.
     voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
 }
 
@@ -20,11 +19,7 @@ impl DiscordWorker {
     /// Creates the worker. `credentials` is `None` until the user registers a Discord
     /// application; the worker stays idle in that case and starts on [`Self::set_credentials`].
     pub async fn new(credentials: Option<DiscordCredentials>) -> Self {
-        let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings {
-            mute: false,
-            deafen: false,
-        }));
-
+        let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings::default()));
         let discord_handler = DiscordState::spawn(credentials, voice_settings.clone()).await;
 
         Self {
@@ -33,9 +28,10 @@ impl DiscordWorker {
         }
     }
 
+    /// Begins connecting. Safe to call with no credentials: it is then a no-op.
     pub async fn start(&mut self) -> Result<(), DiscordError> {
         self.discord_handler
-            .cast(InMessage::Fetch)
+            .cast(InMessage::Connect)
             .await
             .map_err(DiscordError::GenServerError)
     }
@@ -52,7 +48,7 @@ impl DiscordWorker {
     }
 
     pub async fn get_voice_settings(&self) -> DiscordVoiceSettings {
-        self.voice_settings.lock().await.clone()
+        *self.voice_settings.lock().await
     }
 
     pub async fn set_voice_settings(
@@ -133,6 +129,22 @@ mod tests {
         assert!(worker.get_access_token().await.expect("readable").is_none());
     }
 
+    #[tokio::test]
+    async fn an_idle_worker_never_reports_a_connection_on_its_own() {
+        // Guards the "stay parked without credentials" behaviour: a regression here would mean
+        // burning CPU retrying a connection that cannot succeed.
+        let mut worker = DiscordWorker::new(None).await;
+        worker.start().await.expect("start is accepted");
+
+        sleep(Duration::from_millis(300)).await;
+
+        assert!(!worker.is_connected().await.expect("status is readable"));
+        assert_eq!(
+            worker.get_voice_settings().await,
+            DiscordVoiceSettings::default()
+        );
+    }
+
     /// Reads the developer's own Discord application credentials, the same way a user supplies
     /// theirs through the UI.
     fn credentials_from_env_file() -> DiscordCredentials {
@@ -189,5 +201,35 @@ mod tests {
         assert!(!worker.get_voice_settings().await.mute);
 
         worker.shutdown().await.expect("shuts down");
+    }
+
+    /// Exercises the event path rather than the command path: with the subscription in place,
+    /// muting from Discord's own UI must reach the app without it polling anything.
+    ///
+    /// This is the empirical check that `VOICE_SETTINGS_UPDATE` actually fires, which the whole
+    /// event-driven design depends on.
+    #[tokio::test]
+    #[ignore = "interactive: toggle mute in Discord within 30 seconds; run with --ignored"]
+    async fn muting_from_discord_reaches_the_app_as_a_pushed_event() {
+        let mut worker = DiscordWorker::new(Some(credentials_from_env_file())).await;
+        worker.start().await.expect("start is accepted");
+
+        while !worker.is_connected().await.expect("status is readable") {
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        let initial = worker.get_voice_settings().await;
+        println!("Connected. Toggle mute in Discord now — waiting up to 30 s...");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while std::time::Instant::now() < deadline {
+            if worker.get_voice_settings().await != initial {
+                worker.shutdown().await.expect("shuts down");
+                return;
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
+
+        panic!("no VOICE_SETTINGS_UPDATE arrived within 30 s — the subscription is not working");
     }
 }

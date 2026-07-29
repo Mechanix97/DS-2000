@@ -24,12 +24,6 @@ const KEYRING_SERVICE: &str = "DS2000";
 /// third field in sync.
 pub const DISCORD_REDIRECT_URI: &str = "http://localhost/";
 
-/// OAuth2 scopes requested during `AUTHORIZE`.
-///
-/// `rpc` alone happens to be enough today, but the voice scopes are what the app actually uses;
-/// requesting them explicitly avoids breaking if Discord tightens validation.
-pub const DISCORD_SCOPES: &str = "rpc rpc.voice.read rpc.voice.write";
-
 /// Step-by-step guide for creating the Discord application, linked from the Discord tab.
 // TODO: this page does not exist yet. Publish it before the next release.
 pub const URL_DISCORD_SETUP_GUIDE: &str = "https://www.mechardo3d.xyz/ds2000/discord-setup";
@@ -134,11 +128,5 @@ mod tests {
         // The setup guide instructs users to paste this exact string into the Discord portal.
         // If it changes, every existing installation breaks with `invalid_redirect_uri`.
         assert_eq!(DISCORD_REDIRECT_URI, "http://localhost/");
-    }
-
-    #[test]
-    fn requested_scopes_cover_reading_and_writing_voice_state() {
-        assert!(DISCORD_SCOPES.contains("rpc.voice.read"));
-        assert!(DISCORD_SCOPES.contains("rpc.voice.write"));
     }
 }

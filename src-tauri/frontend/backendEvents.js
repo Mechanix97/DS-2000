@@ -72,25 +72,26 @@ headsetIcon.addEventListener('click', () => {
   updateIcons();
 });
 
+// These events are serialized by serde, so the payload arrives as a real object or boolean.
+// They are also only emitted when the value actually changes, so every one of them is news.
 listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
-  try {
-    const payload = JSON.parse(event.payload);
-    mute = 'mute' in payload ? Boolean(payload.mute) : mute;
-    deaf = 'deafen' in payload ? Boolean(payload.deafen) : deaf;
-    updateIcons();
-  } catch (error) {
-    console.error('Error al parsear el JSON (voice):', error);
-    console.error('Payload problemático (voice):', event.payload);
+  const payload = event.payload;
+  if (!payload || typeof payload !== 'object') {
+    console.error('Payload inesperado (voice):', payload);
+    return;
   }
+  mute = Boolean(payload.mute);
+  deaf = Boolean(payload.deafen);
+  updateIcons();
 });
 
 listen('DISCORD_CONNECTION_STATUS_EVENT', event => {
-  discordConnected = event.payload === 'true';
+  discordConnected = Boolean(event.payload);
   updateConnectionStatus();
 });
 
 listen('SERIAL_CONNECTION_STATUS_EVENT', event => {
-  serialConnected = event.payload === 'true';
+  serialConnected = Boolean(event.payload);
   updateConnectionStatus();
 });
 

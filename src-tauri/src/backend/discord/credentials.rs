@@ -3,6 +3,12 @@
 //! The values come from the user's own Discord application; this crate only consumes them. See
 //! the `config` crate for how they are stored and where the redirect URI is defined.
 
+/// OAuth2 scopes requested during `AUTHORIZE`.
+///
+/// `rpc` alone happens to be enough today, but the voice scopes are what the app actually uses;
+/// requesting them explicitly avoids breaking if Discord tightens validation.
+pub const DISCORD_SCOPES: &str = "rpc rpc.voice.read rpc.voice.write";
+
 /// Everything needed to open an authenticated RPC session.
 #[derive(Clone, PartialEq, Eq)]
 pub struct DiscordCredentials {
@@ -78,5 +84,11 @@ mod tests {
         assert!(!rendered.contains("refresh-value"));
         // The client id is not a secret and stays visible, since it is useful when debugging.
         assert!(rendered.contains("123456789"));
+    }
+
+    #[test]
+    fn requested_scopes_cover_reading_and_writing_voice_state() {
+        assert!(DISCORD_SCOPES.contains("rpc.voice.read"));
+        assert!(DISCORD_SCOPES.contains("rpc.voice.write"));
     }
 }
