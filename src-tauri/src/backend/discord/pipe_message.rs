@@ -1,15 +1,25 @@
+//! Wire format for Discord's local RPC protocol.
+//!
+//! A frame is `[opcode: u32 LE][length: u32 LE][payload: UTF-8 JSON]`. Every command carries a
+//! `nonce` that Discord echoes back in its response, which is what lets a single reader
+//! distinguish a reply from an unsolicited event — see [`ResponseKind`].
+
 use rand::Rng;
 use rand::distr::Alphanumeric;
+use serde::Serialize;
+use serde_json::{Value, json};
 
-#[derive(Debug)]
-pub struct PipeMessage {
-    pub opcode: Opcode,
-    pub length: u32,
-    pub payload: Option<String>,
-}
+use crate::error::DiscordError;
+
+/// Length of the frame header: opcode plus payload length.
+pub const HEADER_LEN: usize = 8;
+
+/// Refuses absurd frame lengths rather than trying to allocate them. Discord's largest realistic
+/// payload is `GET_VOICE_SETTINGS`, a few KB at most.
+const MAX_PAYLOAD_LEN: u32 = 8 * 1024 * 1024;
 
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Opcode {
     Handshake = 0,
     Frame = 1,
@@ -32,108 +42,251 @@ impl Opcode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipeMessage {
+    pub opcode: Opcode,
+    pub payload: String,
+}
+
 impl PipeMessage {
-    pub fn new(oc: Opcode, pl: &str) -> Self {
+    pub fn new(opcode: Opcode, payload: impl Into<String>) -> Self {
         Self {
-            opcode: oc,
-            length: pl.len() as u32,
-            payload: Some(pl.to_string()),
+            opcode,
+            payload: payload.into(),
         }
     }
 
-    pub fn handshake(client_id: &str) -> Self {
-        let pl: String = format!(r#"{{"v": 1,"client_id": "{client_id}"}}"#);
-        Self {
-            opcode: Opcode::Handshake,
-            length: pl.len() as u32,
-            payload: Some(pl),
+    /// Serialises the frame. Built from a `serde_json::Value` rather than string formatting, so a
+    /// quote inside a token or client id cannot corrupt the payload.
+    fn from_json(opcode: Opcode, payload: &impl Serialize) -> Result<Self, DiscordError> {
+        Ok(Self {
+            opcode,
+            payload: serde_json::to_string(payload)?,
+        })
+    }
+
+    pub fn handshake(client_id: &str) -> Result<Self, DiscordError> {
+        Self::from_json(
+            Opcode::Handshake,
+            &json!({ "v": 1, "client_id": client_id }),
+        )
+    }
+
+    pub fn pong() -> Result<Self, DiscordError> {
+        Self::from_json(Opcode::Pong, &json!({}))
+    }
+
+    /// Builds a command frame. The caller owns the nonce so it can register a waiter for the
+    /// reply before the frame goes out.
+    pub fn command(cmd: &str, nonce: &str, args: Option<Value>) -> Result<Self, DiscordError> {
+        let mut payload = json!({ "cmd": cmd, "nonce": nonce });
+        if let Some(args) = args {
+            payload["args"] = args;
         }
+        Self::from_json(Opcode::Frame, &payload)
+    }
+
+    /// Builds a `SUBSCRIBE` / `UNSUBSCRIBE` frame, where the event name travels in `evt`.
+    pub fn subscription(
+        cmd: &str,
+        event: &str,
+        nonce: &str,
+        args: Option<Value>,
+    ) -> Result<Self, DiscordError> {
+        let mut payload = json!({ "cmd": cmd, "evt": event, "nonce": nonce });
+        if let Some(args) = args {
+            payload["args"] = args;
+        }
+        Self::from_json(Opcode::Frame, &payload)
     }
 
     pub fn to_buff(&self) -> Vec<u8> {
-        let mut message: Vec<u8> = Vec::new();
-
+        let bytes = self.payload.as_bytes();
+        let mut message = Vec::with_capacity(HEADER_LEN + bytes.len());
         message.extend(&(self.opcode as u32).to_le_bytes());
-        message.extend(&self.length.to_le_bytes());
-        message.extend(self.payload.clone().unwrap().as_bytes());
-
+        message.extend(&(bytes.len() as u32).to_le_bytes());
+        message.extend(bytes);
         message
     }
 
-    pub fn authorize(client_id: &str, scopes: &str) -> Self {
-        let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "AUTHORIZE","args":{{ "client_id": "{}","scopes": "{}"}}}}"#,
-            generate_nonce(36),
-            client_id,
-            scopes
-        );
-        Self {
-            opcode: Opcode::Frame,
-            length: pl.len() as u32,
-            payload: Some(pl),
+    /// Reads the header, returning the opcode and how many payload bytes follow.
+    pub fn parse_header(header: [u8; HEADER_LEN]) -> Result<(Opcode, u32), DiscordError> {
+        let opcode = Opcode::new(u32::from_le_bytes(
+            header[0..4].try_into().expect("4 bytes"),
+        ));
+        let length = u32::from_le_bytes(header[4..8].try_into().expect("4 bytes"));
+
+        if length > MAX_PAYLOAD_LEN {
+            return Err(DiscordError::FrameTooLarge(length));
         }
+        Ok((opcode, length))
     }
 
-    pub fn authenticate(token: &str) -> Self {
-        let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "AUTHENTICATE","args":{{ "access_token": "{}"}}}}"#,
-            generate_nonce(36),
-            token
-        );
-        Self {
-            opcode: Opcode::Frame,
-            length: pl.len() as u32,
-            payload: Some(pl),
-        }
-    }
+    /// Classifies a decoded frame so the reader can route it.
+    pub fn classify(&self) -> Result<ResponseKind, DiscordError> {
+        let payload: Value = serde_json::from_str(&self.payload)?;
 
-    pub fn get_voice_settings() -> Self {
-        let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "GET_VOICE_SETTINGS"}}"#,
-            generate_nonce(36)
-        );
-        Self {
-            opcode: Opcode::Frame,
-            length: pl.len() as u32,
-            payload: Some(pl),
-        }
-    }
+        let nonce = payload
+            .get("nonce")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let event = payload
+            .get("evt")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
 
-    pub fn set_voice_settings(muted: bool, deafed: bool) -> Self {
-        let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "SET_VOICE_SETTINGS","args": {{"mute": {},"deaf":{}}}}}"#,
-            generate_nonce(36),
-            muted,
-            deafed
-        );
-        Self {
-            opcode: Opcode::Frame,
-            length: pl.len() as u32,
-            payload: Some(pl),
-        }
-    }
-
-    pub fn select_voice_channel(channel_id: Option<String>) -> Self {
-        let pl: String = format!(
-            r#"{{"nonce": "{}", "cmd": "SELECT_VOICE_CHANNEL","args": {{"channel_id": {}}}}}"#,
-            generate_nonce(36),
-            match channel_id {
-                Some(c) => format!(r#""{c}""#),
-                None => "null".to_string(),
-            }
-        );
-        Self {
-            opcode: Opcode::Frame,
-            length: pl.len() as u32,
-            payload: Some(pl),
-        }
+        Ok(match (nonce, event) {
+            // Errors carry both a nonce and `evt: "ERROR"`; they still answer a command.
+            (Some(nonce), _) => ResponseKind::Response { nonce, payload },
+            (None, Some(event)) => ResponseKind::Event { event, payload },
+            (None, None) => ResponseKind::Unsolicited(payload),
+        })
     }
 }
 
-pub fn generate_nonce(length: usize) -> String {
+/// What a frame from Discord actually is.
+///
+/// Discord replies and pushes events over the same opcode, so the distinction is made by fields:
+/// a `nonce` means it answers a command we sent, `evt` without a nonce means a subscription
+/// event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResponseKind {
+    Response {
+        nonce: String,
+        payload: Value,
+    },
+    Event {
+        event: String,
+        payload: Value,
+    },
+    /// Neither a reply nor a subscription event. `READY` arrives this way after the handshake.
+    Unsolicited(Value),
+}
+
+/// Extracts Discord's error description from a payload, if it is one.
+///
+/// Errors arrive as `{"evt": "ERROR", "data": {"code": 4006, "message": "..."}}`. The previous
+/// implementation only checked whether `evt` was null and discarded the reason, which turned
+/// every failure into the same opaque message.
+pub fn error_message(payload: &Value) -> Option<String> {
+    if payload.get("evt").and_then(Value::as_str) != Some("ERROR") {
+        return None;
+    }
+    let data = payload.get("data");
+    let message = data
+        .and_then(|d| d.get("message"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown error");
+    match data.and_then(|d| d.get("code")).and_then(Value::as_i64) {
+        Some(code) => Some(format!("{message} (code {code})")),
+        None => Some(message.to_owned()),
+    }
+}
+
+pub fn generate_nonce() -> String {
     rand::rng()
         .sample_iter(&Alphanumeric)
-        .take(length)
+        .take(32)
         .map(char::from)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frames_round_trip_through_the_header() {
+        let message = PipeMessage::handshake("123456789").expect("builds");
+        let buffer = message.to_buff();
+
+        let header: [u8; HEADER_LEN] = buffer[..HEADER_LEN].try_into().expect("header");
+        let (opcode, length) = PipeMessage::parse_header(header).expect("parses");
+
+        assert_eq!(opcode, Opcode::Handshake);
+        assert_eq!(length as usize, buffer.len() - HEADER_LEN);
+        assert_eq!(
+            String::from_utf8(buffer[HEADER_LEN..].to_vec()).expect("utf8"),
+            message.payload
+        );
+    }
+
+    #[test]
+    fn a_quote_in_a_credential_cannot_corrupt_the_payload() {
+        // The previous implementation built JSON with format!, so this input produced a broken
+        // frame instead of an escaped string.
+        let message = PipeMessage::handshake(r#"evil","v":9,"x":"#).expect("builds");
+        let parsed: Value = serde_json::from_str(&message.payload).expect("still valid JSON");
+
+        assert_eq!(parsed["v"], 1);
+        assert_eq!(parsed["client_id"], r#"evil","v":9,"x":"#);
+    }
+
+    #[test]
+    fn oversized_frames_are_rejected_instead_of_allocated() {
+        let mut header = [0u8; HEADER_LEN];
+        header[0..4].copy_from_slice(&1u32.to_le_bytes());
+        header[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+
+        assert!(matches!(
+            PipeMessage::parse_header(header),
+            Err(DiscordError::FrameTooLarge(_))
+        ));
+    }
+
+    #[test]
+    fn a_reply_is_told_apart_from_an_event() {
+        let response = PipeMessage::new(
+            Opcode::Frame,
+            r#"{"cmd":"GET_VOICE_SETTINGS","nonce":"abc","data":{"mute":true}}"#,
+        );
+        assert!(matches!(
+            response.classify().expect("classifies"),
+            ResponseKind::Response { ref nonce, .. } if nonce == "abc"
+        ));
+
+        let event = PipeMessage::new(
+            Opcode::Frame,
+            r#"{"cmd":"DISPATCH","evt":"VOICE_SETTINGS_UPDATE","data":{"mute":true}}"#,
+        );
+        assert!(matches!(
+            event.classify().expect("classifies"),
+            ResponseKind::Event { ref event, .. } if event == "VOICE_SETTINGS_UPDATE"
+        ));
+    }
+
+    #[test]
+    fn an_error_reply_is_routed_to_its_command_not_treated_as_an_event() {
+        // Errors carry `evt: "ERROR"` *and* a nonce. Routing them as events would leave the
+        // command that failed waiting forever.
+        let frame = PipeMessage::new(
+            Opcode::Frame,
+            r#"{"cmd":"AUTHENTICATE","evt":"ERROR","nonce":"xyz","data":{"code":4009,"message":"Invalid token"}}"#,
+        );
+
+        let ResponseKind::Response { nonce, payload } = frame.classify().expect("classifies")
+        else {
+            panic!("an error carrying a nonce must be routed as a response");
+        };
+
+        assert_eq!(nonce, "xyz");
+        assert_eq!(
+            error_message(&payload).as_deref(),
+            Some("Invalid token (code 4009)")
+        );
+    }
+
+    #[test]
+    fn successful_payloads_carry_no_error_message() {
+        let payload: Value = serde_json::from_str(r#"{"cmd":"AUTHENTICATE","data":{}}"#).unwrap();
+        assert!(error_message(&payload).is_none());
+    }
+
+    #[test]
+    fn nonces_are_unique_per_command() {
+        let first = generate_nonce();
+        let second = generate_nonce();
+        assert_ne!(first, second);
+        assert_eq!(first.len(), 32);
+    }
 }

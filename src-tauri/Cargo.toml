@@ -45,7 +45,10 @@ tauri-plugin-shell = "2.0"
 rand = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+# rustls rather than the default native-tls: it drops the OpenSSL system dependency, which
+# otherwise has to be installed by hand before the project builds on Linux. `blocking` was
+# enabled but never used.
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 directories = "6.0"
 
 # Only the Windows backend is enabled: Windows is the supported platform, and the other backends

@@ -20,9 +20,8 @@ env:
 jobs:
   check:
     name: fmt + clippy + test
-    # Windows only for now: the `discord` crate does not compile on Linux yet, because
-    # `read_message_from_lock` in src/backend/discord/ipc.rs is written against Windows named
-    # pipes without a cfg gate. Add `ubuntu-latest` to the matrix once that is fixed.
+    # Windows is the supported platform, so the full suite runs here. Linux portability is
+    # covered separately by the `linux` job below.
     runs-on: windows-latest
 
     steps:
@@ -72,3 +71,28 @@ jobs:
       - name: Test
         working-directory: src-tauri
         run: cargo test --workspace
+
+  linux:
+    name: linux portability
+    runs-on: ubuntu-latest
+
+    # Only the platform-independent crates. The root DS2000 crate is a Tauri app and would need
+    # webkit2gtk and the rest of the Linux desktop toolchain, which is not worth installing while
+    # Linux is unsupported. This job exists to keep the backend from silently regrowing
+    # Windows-only code: the discord crate used to fail here because its pipe reader was written
+    # against named pipes with no cfg gate.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        working-directory: src-tauri
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: linux
+
+      - name: Check the platform-independent crates
+        working-directory: src-tauri
+        run: cargo check -p discord -p serial -p config -p common --all-targets

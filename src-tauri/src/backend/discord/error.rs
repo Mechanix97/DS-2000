@@ -33,6 +33,24 @@ pub enum DiscordError {
     #[error("No data found in the response")]
     NoDataFound,
 
+    /// An error Discord itself reported, with its own wording preserved.
+    #[error("Discord rejected the command: {0}")]
+    Rpc(String),
+
+    #[error("Discord did not answer the command in time")]
+    CommandTimedOut,
+
+    /// An OAuth2 failure, carrying Discord's own wording plus the setup step to check.
+    #[error("Discord rejected the authorisation ({code}): {description}{}", .hint.map(|h| format!(". {h}")).unwrap_or_default())]
+    OAuth {
+        code: String,
+        description: String,
+        hint: Option<&'static str>,
+    },
+
+    #[error("Discord announced a {0} byte frame, which is beyond any sane payload")]
+    FrameTooLarge(u32),
+
     #[error("Internal communication channel is closed")]
     InternalChannelClosed,
 

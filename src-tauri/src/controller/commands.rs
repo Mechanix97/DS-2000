@@ -31,7 +31,7 @@ pub struct DiscordCredentialsStatus {
     pub redirect_uri: &'static str,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, PartialEq, Eq)]
 struct VoiceSettingsPayload {
     mute: bool,
     deafen: bool,
@@ -184,6 +184,34 @@ pub async fn serial_set_rgb(
     Ok(())
 }
 
+/// Values last pushed to the webview, so unchanged ones are not sent again.
+///
+/// Every emit wakes the WebView2 process to run JavaScript. Emitting unconditionally at 10 Hz
+/// meant waking a Chromium process 20-30 times a second to redraw two icons that had not moved,
+/// which dominated the app's idle cost.
+#[derive(Default)]
+struct EmittedState {
+    discord_connected: Option<bool>,
+    serial_connected: Option<bool>,
+    voice_settings: Option<VoiceSettingsPayload>,
+}
+
+impl EmittedState {
+    fn emit_if_changed<T: PartialEq + Clone + serde::Serialize>(
+        app: &AppHandle,
+        event: &str,
+        slot: &mut Option<T>,
+        value: T,
+    ) -> Result<(), ControllerError> {
+        if slot.as_ref() == Some(&value) {
+            return Ok(());
+        }
+        app.emit(event, value.clone())?;
+        *slot = Some(value);
+        Ok(())
+    }
+}
+
 async fn background_loop(
     app: AppHandle,
     controller: Arc<Mutex<Controller>>,
@@ -195,6 +223,7 @@ async fn background_loop(
         .get_voice_settings()
         .await;
     let mut last_serial_update = SystemTime::now();
+    let mut emitted = EmittedState::default();
 
     debug!("Starting background loop");
 
@@ -202,23 +231,29 @@ async fn background_loop(
         let mut controller_lock = controller.lock().await;
 
         let discord_connected = controller_lock.discord_worker.is_connected().await?;
-        app.emit(
+        EmittedState::emit_if_changed(
+            &app,
             DISCORD_CONNECTION_STATUS_EVENT,
-            discord_connected.to_string(),
+            &mut emitted.discord_connected,
+            discord_connected,
         )?;
 
-        if !controller_lock.serial_worker.is_connected().await? {
-            app.emit(SERIAL_CONNECTION_STATUS_EVENT, "false")?;
-        } else {
-            app.emit(SERIAL_CONNECTION_STATUS_EVENT, "true")?;
+        let serial_connected = controller_lock.serial_worker.is_connected().await?;
+        EmittedState::emit_if_changed(
+            &app,
+            SERIAL_CONNECTION_STATUS_EVENT,
+            &mut emitted.serial_connected,
+            serial_connected,
+        )?;
 
-            if SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE {
-                last_serial_update = SystemTime::now();
-                controller_lock
-                    .serial_worker
-                    .set_voice_settings(voice_settings.mute, voice_settings.deafen)
-                    .await?;
-            }
+        if serial_connected
+            && SystemTime::now().duration_since(last_serial_update)? > PERIODICAL_SERIAL_UPDATE
+        {
+            last_serial_update = SystemTime::now();
+            controller_lock
+                .serial_worker
+                .set_voice_settings(voice_settings.mute, voice_settings.deafen)
+                .await?;
         }
 
         let pending_serial_messages = controller_lock.serial_worker.get_pending_messages().await?;
@@ -268,13 +303,14 @@ async fn background_loop(
             .update_last_used_port(last_port_used)
             .await;
 
-        app.emit(
+        EmittedState::emit_if_changed(
+            &app,
             DISCORD_VOICE_SETTINGS_EVENT,
-            serde_json::to_string(&VoiceSettingsPayload {
+            &mut emitted.voice_settings,
+            VoiceSettingsPayload {
                 mute: voice_settings.mute,
                 deafen: voice_settings.deafen,
-            })
-            .map_err(|err| ControllerError::GenericError(err.to_string()))?,
+            },
         )?;
 
         drop(controller_lock);
