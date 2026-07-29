@@ -1,0 +1,9 @@
+# Pins the toolchain so local builds, CI and contributors all run the same rustc and the same
+# clippy lint set. Without this, "clippy passes on my machine" means nothing: newer toolchains
+# add lints, and `-D warnings` turns any new lint into a build failure that only CI sees.
+#
+# 1.88 is the floor imposed by tauri-build's transitive dependencies (plist, serde_with, darling,
+# time). Bumping it is fine, but do it here rather than relying on whatever CI happens to install.
+[toolchain]
+channel = "1.88.0"
+components = ["rustfmt", "clippy"]

@@ -75,10 +75,10 @@ impl Port {
             port.flush().await?;
             drop(framed);
         }
-        if self.connected {
-            if let Some(port_name) = &self.name {
-                info!("Serial port {port_name} disconnected");
-            }
+        if self.connected
+            && let Some(port_name) = &self.name
+        {
+            info!("Serial port {port_name} disconnected");
         }
         self.name = None;
         self.baudrate = 0;
@@ -198,7 +198,7 @@ mod test {
     pub async fn test_auto_connect() {
         let mut port = Port::new();
         if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {:?}", e)
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -211,7 +211,7 @@ mod test {
     pub async fn test_double_ping() {
         let mut port = Port::new();
         if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {:?}", e)
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -232,7 +232,7 @@ mod test {
     pub async fn test_disconnect() {
         let mut port = Port::new();
         if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {:?}", e)
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());
@@ -243,7 +243,7 @@ mod test {
         assert!(!port.is_connected());
 
         if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {:?}", e)
+            eprintln!("Error: {e:?}")
         }
 
         assert!(port.is_connected());

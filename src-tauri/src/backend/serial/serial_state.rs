@@ -107,16 +107,16 @@ impl GenServer for SerialPortState {
                 send_after(Duration::from_secs(1), handle.clone(), Self::CastMsg::Fetch);
             }
             InMessage::Fetch => {
-                if !self.port.is_connected() {
-                    if let Err(err) = self.port.auto_connect(self.baudrate, self.timeout).await {
-                        debug!("Error serial auto connecting: {err}");
-                        send_after(
-                            Duration::from_secs(self.autoconnect_interval_ms),
-                            handle.clone(),
-                            Self::CastMsg::Fetch,
-                        );
-                        return CastResponse::NoReply(self);
-                    }
+                if !self.port.is_connected()
+                    && let Err(err) = self.port.auto_connect(self.baudrate, self.timeout).await
+                {
+                    debug!("Error serial auto connecting: {err}");
+                    send_after(
+                        Duration::from_secs(self.autoconnect_interval_ms),
+                        handle.clone(),
+                        Self::CastMsg::Fetch,
+                    );
+                    return CastResponse::NoReply(self);
                 }
 
                 loop {
@@ -144,28 +144,26 @@ impl GenServer for SerialPortState {
                 );
             }
             InMessage::SetVoiceSettings(mute, deafen) => {
-                if self.port.is_connected() {
-                    if let Err(err) = self
+                if self.port.is_connected()
+                    && let Err(err) = self
                         .port
                         .send_message(&SerialMessage::VoiceSettings(VoiceSettingsMessage {
                             mute,
                             deafen,
                         }))
                         .await
-                    {
-                        debug!("Error sending voice settings msg: {err}");
-                    }
+                {
+                    debug!("Error sending voice settings msg: {err}");
                 }
             }
             InMessage::RGBUpdate(update) => {
-                if self.port.is_connected() {
-                    if let Err(err) = self
+                if self.port.is_connected()
+                    && let Err(err) = self
                         .port
                         .send_message(&SerialMessage::RGBUpdate(RGBConfigMessage { update }))
                         .await
-                    {
-                        debug!("Error sending voice settings msg: {err}");
-                    }
+                {
+                    debug!("Error sending RGB update msg: {err}");
                 }
             }
         }

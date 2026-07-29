@@ -60,7 +60,7 @@ impl IpcClient {
         }
         let iter = 0..10;
         for i in iter {
-            let pipe_name = format!(r"\\?\pipe\discord-ipc-{}", i);
+            let pipe_name = format!(r"\\?\pipe\discord-ipc-{i}");
             if let Ok(pipe) = ClientOptions::new().open(pipe_name) {
                 self.pipe_client = Some(Arc::new(Mutex::new(pipe)));
                 self.state = DiscordConnectionState::Connected;
