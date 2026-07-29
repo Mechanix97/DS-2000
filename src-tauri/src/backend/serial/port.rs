@@ -1,256 +1,289 @@
+//! Serial port connection.
+//!
+//! Reading is done by a dedicated task awaiting the framed stream, not by polling it with a
+//! timeout. `serial2-tokio` is async, so a task parked on `next()` costs nothing until bytes
+//! actually arrive — where the previous implementation woke four times a second and blocked up
+//! to 100 ms each time whether or not the device had said anything.
+
 use super::error::SerialPortError;
 use super::messages::ping::PingMessage;
 use super::serial_message::SerialMessage;
 use super::serial_message::SerialMessageCodec;
 
+use common::task_guard::AbortOnDrop;
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use serial2_tokio::SerialPort;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use tokio::time::{Duration, timeout};
 use tokio_util::codec::Framed;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+type PortFramed = Framed<SerialPort, SerialMessageCodec>;
+type PortWriter = SplitSink<PortFramed, SerialMessage>;
+
+/// How long the device has to answer the handshake ping before the port is rejected.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_millis(200);
+
+/// Something the reader task observed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SerialEvent {
+    Message(SerialMessage),
+    /// The port closed or failed. The state machine reconnects with backoff.
+    Disconnected,
+}
 
 #[derive(Clone)]
 pub struct Port {
     pub name: Option<String>,
-    pub baudrate: u32,
-    pub timeout: Duration,
-    pub framed: Option<Arc<Mutex<Framed<SerialPort, SerialMessageCodec>>>>,
-    pub connected: bool,
-}
-
-impl Default for Port {
-    fn default() -> Self {
-        Self::new()
-    }
+    writer: Option<Arc<Mutex<PortWriter>>>,
+    _reader_task: Option<Arc<AbortOnDrop>>,
+    events: mpsc::UnboundedSender<SerialEvent>,
+    connected: bool,
 }
 
 impl Port {
-    pub fn new() -> Port {
+    pub fn new(events: mpsc::UnboundedSender<SerialEvent>) -> Port {
         Port {
             name: None,
-            baudrate: 0,
-            timeout: Duration::from_millis(0),
-            framed: None,
+            writer: None,
+            _reader_task: None,
+            events,
             connected: false,
         }
     }
 
-    pub fn connect(
+    /// Opens a port, verifies a DS-2000 is on the other end, and starts reading.
+    ///
+    /// The handshake runs on the whole framed stream before it is split, so the ping/pong
+    /// exchange stays a simple request/response and the reader task only starts once the device
+    /// has proven itself.
+    pub async fn connect_and_authenticate(
         &mut self,
         port_name: &Path,
         baudrate: u32,
-        timeout: Duration,
+        _timeout: Duration,
     ) -> Result<(), SerialPortError> {
         if self.is_connected() {
             return Err(SerialPortError::PortAlreadyConnected);
         }
-        match SerialPort::open(port_name, baudrate) {
-            Ok(p) => {
-                p.set_dtr(true)?;
-                p.set_rts(true)?;
 
-                let framed = Framed::new(p, SerialMessageCodec);
-                self.framed = Some(Arc::new(Mutex::new(framed)));
-                self.name = port_name.to_str().map(|s| s.to_string());
-                self.baudrate = baudrate;
-                self.timeout = timeout;
+        let port = SerialPort::open(port_name, baudrate).map_err(|err| {
+            debug!("Port {port_name:?} is not available: {err}");
+            SerialPortError::PortNotAvailable
+        })?;
+        port.set_dtr(true)?;
+        port.set_rts(true)?;
 
-                Ok(())
-            }
-            Err(err) => {
-                debug!("PortNotAvailable: {err}");
-                Err(SerialPortError::PortNotAvailable)
-            }
-        }
-    }
+        let mut framed = Framed::new(port, SerialMessageCodec);
+        handshake(&mut framed).await?;
 
-    pub async fn disconnect(&mut self) -> Result<(), SerialPortError> {
-        if let Some(framed_mutex) = &self.framed {
-            let mut framed = framed_mutex.lock().await;
-            let port = framed.get_mut();
-            port.flush().await?;
-            drop(framed);
-        }
-        if self.connected
-            && let Some(port_name) = &self.name
-        {
-            info!("Serial port {port_name} disconnected");
-        }
-        self.name = None;
-        self.baudrate = 0;
-        self.timeout = Duration::from_millis(0);
-        self.framed = None;
-        self.connected = false;
+        let (writer, reader) = framed.split();
+        let reader_task = tokio::spawn(read_loop(reader, self.events.clone()));
+
+        self.writer = Some(Arc::new(Mutex::new(writer)));
+        self._reader_task = Some(AbortOnDrop::new(reader_task));
+        self.name = port_name.to_str().map(str::to_owned);
+        self.connected = true;
+
+        info!("Serial port {port_name:?} connected");
         Ok(())
     }
 
-    pub fn get_ports(&self) -> Result<Vec<PathBuf>, SerialPortError> {
-        let mut ports = vec![];
-        for port in SerialPort::available_ports().unwrap() {
-            ports.push(port);
-        }
-        Ok(ports)
-    }
-
+    /// Tries every available port until one answers the handshake.
     pub async fn auto_connect(
         &mut self,
         baudrate: u32,
         timeout: Duration,
     ) -> Result<(), SerialPortError> {
-        let mut available_ports = self.get_ports()?;
+        let mut available_ports = available_ports()?;
         available_ports.sort();
-        for p in available_ports {
-            debug!("Trying to connect to port {:?}", p);
 
-            if let Err(err) = self.connect_and_authenticate(&p, baudrate, timeout).await {
-                debug!("{:?}", err);
-                continue;
+        for path in available_ports {
+            debug!("Trying serial port {path:?}");
+            if self
+                .connect_and_authenticate(&path, baudrate, timeout)
+                .await
+                .is_ok()
+            {
+                return Ok(());
             }
-
-            return Ok(());
         }
         Err(SerialPortError::PortNotConnected)
     }
 
-    pub async fn authenticate(&mut self) -> Result<(), SerialPortError> {
-        self.send_message(&SerialMessage::Ping(PingMessage {}))
-            .await?;
-
-        let msg = self.read_message(Duration::from_millis(100)).await?;
-
-        match msg {
-            SerialMessage::Pong(_) => {
-                debug!("Authentication successful");
-                Ok(())
-            }
-            _ => {
-                debug!("Authentication failed");
-                Err(SerialPortError::AuthenticationFailed)
+    pub async fn disconnect(&mut self) {
+        if self.connected {
+            if let Some(name) = &self.name {
+                info!("Serial port {name} disconnected");
             }
         }
-    }
-
-    pub async fn connect_and_authenticate(
-        &mut self,
-        port_name: &Path,
-        baudrate: u32,
-        timeout: Duration,
-    ) -> Result<(), SerialPortError> {
-        self.connect(port_name, baudrate, timeout)?;
-
-        if let Err(err) = self.authenticate().await {
-            self.disconnect().await?;
-            return Err(err);
-        }
-        self.connected = true;
-        info!("Serial port {port_name:?} connected");
-        Ok(())
+        // Dropping the writer and the guard closes the port and stops the reader task.
+        self.writer = None;
+        self._reader_task = None;
+        self.name = None;
+        self.connected = false;
     }
 
     pub fn is_connected(&self) -> bool {
         self.connected
     }
 
-    pub async fn send_message(&self, msg: &SerialMessage) -> Result<(), SerialPortError> {
-        if let Some(framed_mutex) = &self.framed {
-            let mut framed = framed_mutex.lock().await;
-            framed.send(msg.clone()).await?;
-            Ok(())
-        } else {
-            Err(SerialPortError::PortNotConnected)
-        }
-    }
-
-    pub async fn read_message(
-        &self,
-        timeout_duration: Duration,
-    ) -> Result<SerialMessage, SerialPortError> {
-        if let Some(framed_mutex) = &self.framed {
-            let mut framed = framed_mutex.lock().await;
-            match timeout(timeout_duration, framed.next()).await {
-                Ok(Some(Ok(msg))) => Ok(msg),
-                Ok(Some(Err(e))) => Err(e),
-                Ok(None) => Err(SerialPortError::PortNotConnected),
-                Err(_) => Err(SerialPortError::TimedOut),
-            }
-        } else {
-            Err(SerialPortError::PortNotConnected)
-        }
+    pub async fn send_message(&self, message: &SerialMessage) -> Result<(), SerialPortError> {
+        let writer = self
+            .writer
+            .as_ref()
+            .ok_or(SerialPortError::PortNotConnected)?;
+        writer.lock().await.send(message.clone()).await
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::Port;
-    use crate::messages::ping::PingMessage;
-    use crate::messages::pong::PongMessage;
-    use crate::serial_message::SerialMessage;
+/// Confirms a DS-2000 is on the other end by exchanging ping/pong.
+///
+/// Without it, `auto_connect` would happily latch onto any serial device on the machine — a
+/// printer, an Arduino, a Bluetooth adapter.
+async fn handshake(framed: &mut PortFramed) -> Result<(), SerialPortError> {
+    framed
+        .send(SerialMessage::Ping(PingMessage {}))
+        .await
+        .map_err(|err| {
+            debug!("Could not send the handshake ping: {err}");
+            SerialPortError::AuthenticationFailed
+        })?;
 
-    use tokio::time::Duration;
-    use tokio::time::sleep;
+    match timeout(HANDSHAKE_TIMEOUT, framed.next()).await {
+        Ok(Some(Ok(SerialMessage::Pong(_)))) => Ok(()),
+        Ok(Some(Ok(other))) => {
+            debug!("Handshake answered with {other:?} instead of a pong");
+            Err(SerialPortError::AuthenticationFailed)
+        }
+        Ok(Some(Err(err))) => {
+            debug!("Handshake reply could not be decoded: {err}");
+            Err(SerialPortError::AuthenticationFailed)
+        }
+        Ok(None) => Err(SerialPortError::PortNotConnected),
+        Err(_) => Err(SerialPortError::TimedOut),
+    }
+}
+
+/// Awaits frames from the device for as long as the port is open.
+///
+/// A malformed frame is logged and skipped rather than treated as a disconnection: line noise
+/// should cost one dropped message, not a reconnect cycle. Only an I/O failure ends the loop.
+async fn read_loop(
+    mut reader: SplitStream<PortFramed>,
+    events: mpsc::UnboundedSender<SerialEvent>,
+) {
+    while let Some(frame) = reader.next().await {
+        match frame {
+            Ok(message) => {
+                debug!("Serial message received: {message:?}");
+                if events.send(SerialEvent::Message(message)).is_err() {
+                    // Nobody is listening any more, so the connection is being torn down.
+                    return;
+                }
+            }
+            Err(SerialPortError::IoError(err)) => {
+                debug!("Serial port I/O error, dropping the connection: {err}");
+                break;
+            }
+            Err(err) => warn!("Discarding a malformed serial frame: {err}"),
+        }
+    }
+
+    let _ = events.send(SerialEvent::Disconnected);
+}
+
+/// Lists candidate serial ports.
+///
+/// Enumeration failing is reported rather than panicking: it happens on machines with unusual
+/// driver setups, and it must not take the application down.
+fn available_ports() -> Result<Vec<PathBuf>, SerialPortError> {
+    SerialPort::available_ports().map_err(|err| {
+        warn!("Could not enumerate serial ports: {err}");
+        SerialPortError::PortNotAvailable
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[tokio::test]
-    #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
-    pub async fn test_auto_connect() {
-        let mut port = Port::new();
-        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {e:?}")
-        }
+    async fn a_fresh_port_is_not_connected_and_refuses_to_send() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let port = Port::new(tx);
 
-        assert!(port.is_connected());
+        assert!(!port.is_connected());
+        assert_eq!(
+            port.send_message(&SerialMessage::Ping(PingMessage {}))
+                .await,
+            Err(SerialPortError::PortNotConnected)
+        );
+    }
 
-        port.disconnect().await.unwrap();
+    #[tokio::test]
+    async fn disconnecting_an_unconnected_port_is_harmless() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut port = Port::new(tx);
+
+        port.disconnect().await;
+
+        assert!(!port.is_connected());
+        assert!(port.name.is_none());
     }
 
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
-    pub async fn test_double_ping() {
-        let mut port = Port::new();
-        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {e:?}")
-        }
+    async fn autoconnect_finds_the_device_and_receives_its_frames() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut port = Port::new(tx);
 
+        port.auto_connect(115200, Duration::from_millis(1000))
+            .await
+            .expect("a DS-2000 should be connected");
         assert!(port.is_connected());
 
+        // The device answers a ping, which proves the reader task is delivering frames.
         port.send_message(&SerialMessage::Ping(PingMessage {}))
             .await
-            .unwrap();
+            .expect("sends");
 
-        let pong = port.read_message(Duration::from_millis(100)).await.unwrap();
+        let event = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("a frame should arrive")
+            .expect("the channel stays open");
 
-        assert_eq!(pong, SerialMessage::Pong(PongMessage {}));
+        assert!(matches!(
+            event,
+            SerialEvent::Message(SerialMessage::Pong(_))
+        ));
 
-        port.disconnect().await.unwrap();
+        port.disconnect().await;
+        assert!(!port.is_connected());
     }
 
+    /// Reconnecting has to work repeatedly: the reader task and the port handle from the previous
+    /// connection must be gone, or the port stays locked and the second attempt fails.
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
-    pub async fn test_disconnect() {
-        let mut port = Port::new();
-        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {e:?}")
+    async fn the_port_can_be_reopened_after_disconnecting() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut port = Port::new(tx);
+
+        for attempt in 1..=3 {
+            port.auto_connect(115200, Duration::from_millis(1000))
+                .await
+                .unwrap_or_else(|err| panic!("attempt {attempt} should connect: {err}"));
+            assert!(port.is_connected(), "attempt {attempt}");
+
+            port.disconnect().await;
+            assert!(!port.is_connected(), "attempt {attempt}");
+
+            // Give the OS a moment to release the handle before reopening.
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
-
-        assert!(port.is_connected());
-
-        port.disconnect().await.unwrap();
-        sleep(Duration::from_millis(1000)).await;
-
-        assert!(!port.is_connected());
-
-        if let Err(e) = port.auto_connect(115200, Duration::from_millis(1000)).await {
-            eprintln!("Error: {e:?}")
-        }
-
-        assert!(port.is_connected());
-
-        port.disconnect().await.unwrap();
-        sleep(Duration::from_millis(1000)).await;
-
-        assert!(!port.is_connected());
     }
 }

@@ -90,10 +90,122 @@ impl SerialMessage {
     }
 }
 
-pub trait RLPxMessage: Sized {
+/// A message body that can travel over the serial link.
+///
+/// `CODE` is the first byte of the frame and identifies the variant. Codes are part of the
+/// firmware contract: changing one breaks every device already flashed.
+pub trait SerialFrame: Sized {
     const CODE: u8;
 
     fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError>;
 
     fn decode(msg_data: &[u8]) -> Result<Self, SerialMessageError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::button::{Button, ButtonMessage};
+    use crate::messages::ping::PingMessage;
+    use crate::messages::pong::PongMessage;
+    use tokio_util::codec::{Decoder, Encoder};
+
+    fn round_trip(message: SerialMessage) {
+        let mut buffer = BytesMut::new();
+        SerialMessageCodec
+            .encode(message.clone(), &mut buffer)
+            .expect("encodes");
+
+        let decoded = SerialMessageCodec
+            .decode(&mut buffer)
+            .expect("decodes")
+            .expect("a complete frame");
+
+        assert_eq!(decoded, message);
+        assert!(buffer.is_empty(), "the frame should be consumed");
+    }
+
+    #[test]
+    fn every_message_type_survives_a_round_trip() {
+        round_trip(SerialMessage::Ping(PingMessage {}));
+        round_trip(SerialMessage::Pong(PongMessage {}));
+        round_trip(SerialMessage::Button(ButtonMessage {
+            button: Button::DeafenButton,
+        }));
+    }
+
+    #[test]
+    fn a_partial_frame_yields_nothing_until_its_delimiter_arrives() {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&[PingMessage::CODE]);
+
+        // No 0xFF yet, so the frame is incomplete rather than malformed.
+        assert!(
+            SerialMessageCodec
+                .decode(&mut buffer)
+                .expect("no error")
+                .is_none()
+        );
+
+        buffer.extend_from_slice(&[0xFF]);
+        assert!(
+            SerialMessageCodec
+                .decode(&mut buffer)
+                .expect("no error")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn two_frames_in_one_buffer_are_decoded_separately() {
+        let mut buffer = BytesMut::new();
+        SerialMessageCodec
+            .encode(SerialMessage::Ping(PingMessage {}), &mut buffer)
+            .expect("encodes");
+        SerialMessageCodec
+            .encode(SerialMessage::Pong(PongMessage {}), &mut buffer)
+            .expect("encodes");
+
+        assert_eq!(
+            SerialMessageCodec.decode(&mut buffer).unwrap().unwrap(),
+            SerialMessage::Ping(PingMessage {})
+        );
+        assert_eq!(
+            SerialMessageCodec.decode(&mut buffer).unwrap().unwrap(),
+            SerialMessage::Pong(PongMessage {})
+        );
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn an_unknown_message_code_is_rejected() {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&[0x7E, 0xFF]);
+
+        assert!(SerialMessageCodec.decode(&mut buffer).is_err());
+    }
+
+    #[test]
+    fn an_empty_frame_is_rejected() {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&[0xFF]);
+
+        assert!(SerialMessageCodec.decode(&mut buffer).is_err());
+    }
+
+    /// Documents a known protocol limitation rather than asserting desired behaviour.
+    ///
+    /// `0xFF` is the frame delimiter and is not escaped, so no payload byte may be 255. That is
+    /// why `RGBConfig::check_255` exists, and why full brightness and pure white are unreachable.
+    /// Fixing it properly needs byte stuffing on both sides, and the firmware lives in another
+    /// repository.
+    #[test]
+    fn a_payload_byte_of_255_would_split_the_frame() {
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&[crate::messages::rgb::RGBConfigMessage::CODE, 0xFF, 0x01]);
+
+        // The delimiter is found inside what should have been the payload, so the frame is cut
+        // short and decodes as malformed instead of carrying the value 255.
+        assert!(SerialMessageCodec.decode(&mut buffer).is_err());
+    }
 }

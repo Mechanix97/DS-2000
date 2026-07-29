@@ -1,7 +1,7 @@
 use bytes::BufMut;
 
 use crate::error::SerialMessageError;
-use crate::serial_message::RLPxMessage;
+use crate::serial_message::SerialFrame;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct VoiceSettingsMessage {
@@ -9,7 +9,7 @@ pub struct VoiceSettingsMessage {
     pub deafen: bool,
 }
 
-impl RLPxMessage for VoiceSettingsMessage {
+impl SerialFrame for VoiceSettingsMessage {
     const CODE: u8 = 0x03;
     fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError> {
         buf.put_u8(self.mute as u8);

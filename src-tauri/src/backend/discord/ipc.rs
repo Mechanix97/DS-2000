@@ -10,12 +10,12 @@
 //! So exactly one task reads the pipe. It routes each frame by nonce: replies wake the command
 //! waiting on that nonce, events go to the event channel. Nothing else ever reads.
 
+use common::task_guard::AbortOnDrop;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, info, warn};
 
@@ -65,23 +65,11 @@ pub enum IpcEvent {
 
 type PendingReplies = Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>;
 
-/// Stops the reader task once the last holder of the connection lets go.
-///
-/// Needed because the actor framework requires its state to be `Clone`, so the connection is
-/// shared rather than owned; aborting on the first drop would kill a live reader.
-struct ReaderTask(JoinHandle<()>);
-
-impl Drop for ReaderTask {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
 #[derive(Clone)]
 struct Connection {
     writer: Arc<Mutex<WriteHalf<Transport>>>,
     pending: PendingReplies,
-    _reader_task: Arc<ReaderTask>,
+    _reader_task: Arc<AbortOnDrop>,
 }
 
 #[derive(Clone)]
@@ -127,7 +115,7 @@ impl IpcClient {
         self.connection = Some(Connection {
             writer,
             pending,
-            _reader_task: Arc::new(ReaderTask(reader_task)),
+            _reader_task: AbortOnDrop::new(reader_task),
         });
         self.state = DiscordConnectionState::Connected;
         Ok(())

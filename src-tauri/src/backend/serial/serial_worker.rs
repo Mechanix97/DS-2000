@@ -24,10 +24,11 @@ impl SerialWorker {
         }
     }
 
+    /// Begins connecting, trying `last_used_port` first so the common case skips a full scan.
     pub async fn start(&mut self, last_used_port: Option<String>) -> Result<(), SerialPortError> {
         debug!("Serial worker started");
         self.serial_port_handler
-            .cast(InMessage::Start(last_used_port))
+            .cast(InMessage::Connect(last_used_port))
             .await
             .map_err(SerialPortError::GenServerError)
     }
