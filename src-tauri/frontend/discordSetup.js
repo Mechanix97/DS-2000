@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
 
 const clientIdInput = document.getElementById('discord-client-id');
@@ -102,6 +103,12 @@ clearButton.addEventListener('click', async () => {
   } finally {
     clearButton.disabled = false;
   }
+});
+
+// Discord draws its authorisation modal inside its own window, so with Discord minimised to the
+// tray the request is queued and invisible. Without this notice the app just looks stuck.
+listen('DISCORD_AWAITING_AUTHORIZATION_EVENT', () => {
+  showFeedback('Abrí Discord y aceptá la solicitud de autorización.', null);
 });
 
 guideLink.addEventListener('click', async () => {

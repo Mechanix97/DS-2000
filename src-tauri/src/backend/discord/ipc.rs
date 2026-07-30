@@ -37,8 +37,16 @@ type Transport = UnixStream;
 /// How long a command waits for its reply before giving up.
 ///
 /// Bounded so a dropped or malformed reply cannot park the connection forever; the state machine
-/// reconnects instead.
+/// reconnects instead. Discord answers these in milliseconds.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long `AUTHORIZE` waits, which is a different kind of waiting entirely.
+///
+/// It does not wait for Discord, it waits for a person to read a modal and click Authorize. Under
+/// the ordinary command timeout the request expired after ten seconds and the reconnect loop then
+/// queued a fresh modal on every retry, so the user was chasing a dialog that kept being replaced
+/// by another one.
+const AUTHORIZE_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Event Discord pushes once subscribed. Carries the same payload as `GET_VOICE_SETTINGS`.
 pub const VOICE_SETTINGS_UPDATE: &str = "VOICE_SETTINGS_UPDATE";
@@ -65,10 +73,20 @@ pub enum IpcEvent {
 
 type PendingReplies = Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>;
 
+/// Signals that Discord answered the handshake with `READY`.
+///
+/// Held in an `Arc<Mutex<Option<..>>>` because the client has to be `Clone` for the actor, and a
+/// oneshot receiver is not.
+type ReadySignal = Arc<Mutex<Option<oneshot::Receiver<()>>>>;
+
+/// How long to wait for `READY` before treating the handshake as rejected.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Clone)]
 struct Connection {
     writer: Arc<Mutex<WriteHalf<Transport>>>,
     pending: PendingReplies,
+    ready: ReadySignal,
     _reader_task: Arc<AbortOnDrop>,
 }
 
@@ -104,17 +122,20 @@ impl IpcClient {
 
         let writer = Arc::new(Mutex::new(writer));
         let pending: PendingReplies = Arc::new(Mutex::new(HashMap::new()));
+        let (ready_tx, ready_rx) = oneshot::channel();
 
         let reader_task = tokio::spawn(read_loop(
             reader,
             writer.clone(),
             pending.clone(),
             self.events.clone(),
+            ready_tx,
         ));
 
         self.connection = Some(Connection {
             writer,
             pending,
+            ready: Arc::new(Mutex::new(Some(ready_rx))),
             _reader_task: AbortOnDrop::new(reader_task),
         });
         self.state = DiscordConnectionState::Connected;
@@ -157,6 +178,15 @@ impl IpcClient {
         &self,
         build: impl FnOnce(&str) -> Result<PipeMessage, DiscordError>,
     ) -> Result<Value, DiscordError> {
+        self.request_within(COMMAND_TIMEOUT, build).await
+    }
+
+    /// Same as [`Self::request`] with an explicit deadline, for commands that wait on a human.
+    async fn request_within(
+        &self,
+        deadline: Duration,
+        build: impl FnOnce(&str) -> Result<PipeMessage, DiscordError>,
+    ) -> Result<Value, DiscordError> {
         let connection = self
             .connection
             .as_ref()
@@ -173,7 +203,7 @@ impl IpcClient {
             return Err(err);
         }
 
-        let payload = match timeout(COMMAND_TIMEOUT, rx).await {
+        let payload = match timeout(deadline, rx).await {
             Ok(Ok(payload)) => payload,
             // The sender was dropped: the reader task ended, so the connection is gone.
             Ok(Err(_)) => return Err(DiscordError::PipeNotConnected),
@@ -189,17 +219,46 @@ impl IpcClient {
         Ok(payload)
     }
 
+    /// Performs the handshake and waits for Discord to answer `READY`.
+    ///
+    /// Waiting is not optional. Discord ignores commands sent before it has finished processing
+    /// the handshake, silently — no error, no reply, nothing. Firing `AUTHORIZE` straight after
+    /// writing the handshake is a race: win it and everything works, lose it and the connection
+    /// hangs until the command times out, with no clue as to why.
     pub async fn handshake(&mut self, client_id: &str) -> Result<(), DiscordError> {
         if self.state != DiscordConnectionState::Connected {
             return Err(DiscordError::ClientNotConnected);
         }
+        let ready = {
+            let connection = self
+                .connection
+                .as_ref()
+                .ok_or(DiscordError::PipeNotConnected)?;
+            connection.ready.lock().await.take()
+        };
+        let ready = ready.ok_or(DiscordError::HandshakeFailed)?;
+
         self.client_id = Some(client_id.to_owned());
         self.write_frame(PipeMessage::handshake(client_id)?).await?;
+
+        match timeout(HANDSHAKE_TIMEOUT, ready).await {
+            Ok(Ok(())) => {}
+            // The sender was dropped, so the reader ended: Discord closed the connection, which
+            // is what a rejected client id looks like.
+            Ok(Err(_)) => return Err(DiscordError::HandshakeFailed),
+            Err(_) => return Err(DiscordError::HandshakeFailed),
+        }
+
+        debug!("Discord handshake acknowledged");
         self.state = DiscordConnectionState::HandshakeDone;
         Ok(())
     }
 
     /// Prompts the user with Discord's authorisation modal and returns the OAuth code.
+    ///
+    /// `scopes` is space separated here and sent as a JSON array, which is what Discord expects.
+    /// Sending the string as-is makes Discord read it as one scope whose name contains spaces; it
+    /// then answers nothing at all and the command times out ten seconds later with no hint why.
     pub async fn authorize(&mut self, scopes: &str) -> Result<String, DiscordError> {
         if self.state != DiscordConnectionState::HandshakeDone {
             return Err(DiscordError::HandshakeNotDone);
@@ -209,8 +268,10 @@ impl IpcClient {
             .clone()
             .ok_or(DiscordError::ClientIdNotFound)?;
 
+        let scopes: Vec<&str> = scopes.split_whitespace().collect();
+
         let payload = self
-            .request(|nonce| {
+            .request_within(AUTHORIZE_TIMEOUT, |nonce| {
                 PipeMessage::command(
                     "AUTHORIZE",
                     nonce,
@@ -350,7 +411,9 @@ async fn read_loop(
     writer: Arc<Mutex<WriteHalf<Transport>>>,
     pending: PendingReplies,
     events: mpsc::UnboundedSender<IpcEvent>,
+    ready: oneshot::Sender<()>,
 ) {
+    let mut ready = Some(ready);
     loop {
         let message = match read_frame(&mut reader).await {
             Ok(message) => message,
@@ -389,6 +452,16 @@ async fn read_loop(
                 }
             }
             Ok(ResponseKind::Event { event, payload }) => {
+                if event == "READY"
+                    && let Some(signal) = ready.take()
+                {
+                    let _ = signal.send(());
+                }
+                if let Some(message) = error_message(&payload) {
+                    // An error with no nonce answers no particular command, so without this it
+                    // would vanish and the caller would only ever see a timeout.
+                    warn!("Discord reported an error: {message}");
+                }
                 if event == VOICE_SETTINGS_UPDATE {
                     match parse_voice_settings(&payload["data"]) {
                         Ok((mute, deafen)) => {
@@ -403,7 +476,13 @@ async fn read_loop(
                     }
                 }
             }
-            Ok(ResponseKind::Unsolicited(_)) => {}
+            Ok(ResponseKind::Unsolicited(payload)) => {
+                debug!(
+                    "Unsolicited frame from Discord: cmd={:?} evt={:?}",
+                    payload.get("cmd").and_then(|v| v.as_str()),
+                    payload.get("evt").and_then(|v| v.as_str())
+                );
+            }
             Err(err) => warn!("Could not parse a frame from Discord: {err}"),
         }
     }

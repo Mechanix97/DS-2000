@@ -10,3 +10,6 @@ discord.env
 # Only this subfolder is ignored, so the rest of .claude/ (settings, skills) can be
 # versioned if it ever becomes useful.
 .claude/internal/
+
+# Tokens cached by the interactive Discord tests so the modal is only accepted once.
+discord-tokens.json
