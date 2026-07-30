@@ -110,7 +110,7 @@ rgbModeSelector.addEventListener('change', (event) => {
   const led1Sliders = document.getElementById('rgb-sliders-led1');
   const led2Sliders = document.getElementById('rgb-sliders-led2');
 
-  if (mode === 'ciclar') {
+  if (mode === 'cycle') {
     led1Sliders.style.display = 'none';
     led2Sliders.style.display = 'none';
   } else {
@@ -120,16 +120,24 @@ rgbModeSelector.addEventListener('change', (event) => {
   updateRGB();
 });
 
+// The mode goes by name. Sending the <select> index coupled the device's behaviour to the
+// option order, and the two had already drifted apart.
 function updateRGB() {
   invoke('serial_set_rgb', {
-    mode: rgbModeSelector.selectedIndex,
-    brightness: parseInt(brightnessSlider.value),
-    led1Red: parseInt(led1RedSlider.value),
-    led1Green: parseInt(led1GreenSlider.value),
-    led1Blue: parseInt(led1BlueSlider.value),
-    led2Red: parseInt(led2RedSlider.value),
-    led2Green: parseInt(led2GreenSlider.value),
-    led2Blue: parseInt(led2BlueSlider.value),
+    request: {
+      mode: rgbModeSelector.value,
+      brightness: parseInt(brightnessSlider.value),
+      led1: {
+        red: parseInt(led1RedSlider.value),
+        green: parseInt(led1GreenSlider.value),
+        blue: parseInt(led1BlueSlider.value),
+      },
+      led2: {
+        red: parseInt(led2RedSlider.value),
+        green: parseInt(led2GreenSlider.value),
+        blue: parseInt(led2BlueSlider.value),
+      },
+    },
   });
 }
 
@@ -161,5 +169,11 @@ led2GreenSlider.addEventListener('change', (event) => {
 led2BlueSlider.addEventListener('change', (event) => {
   updateRGB();
 });
+
+// A single source of truth for the version: the one Tauri was built with.
+invoke('app_version').then(version => {
+  const el = document.getElementById('app-version');
+  if (el) el.textContent = version;
+}).catch(error => console.error('No se pudo leer la versión:', error));
 
 invoke('controller_start');
