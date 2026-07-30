@@ -2,6 +2,12 @@
 # clippy lint set. Without this, "clippy passes on my machine" means nothing: newer toolchains
 # add lints, and `-D warnings` turns any new lint into a build failure that only CI sees.
 #
+# It lives at the repository root, not next to the workspace manifest, because rustup resolves it
+# from the current directory upwards. `make run` invokes cargo from here, so a copy under
+# src-tauri/ was invisible to it: the build silently fell back to the default toolchain and failed
+# on let-chains, which need 1.88. CI never noticed because it runs cargo with
+# working-directory: src-tauri.
+#
 # 1.88 is the floor imposed by tauri-build's transitive dependencies (plist, serde_with, darling,
 # time). Bumping it is fine, but do it here rather than relying on whatever CI happens to install.
 [toolchain]
