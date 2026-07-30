@@ -18,6 +18,23 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::ClientOptions;
 
+/// Replaces an OAuth code with a placeholder, keeping the rest of the frame readable.
+#[cfg(windows)]
+fn redact_code(frame: &str) -> String {
+    let Some(start) = frame.find(r#""code":""#) else {
+        return frame.to_owned();
+    };
+    let value_start = start + r#""code":""#.len();
+    match frame[value_start..].find('"') {
+        Some(offset) => format!(
+            "{}<redacted>{}",
+            &frame[..value_start],
+            &frame[value_start + offset..]
+        ),
+        None => frame.to_owned(),
+    }
+}
+
 #[cfg(windows)]
 #[tokio::main]
 async fn main() {
@@ -81,7 +98,11 @@ async fn main() {
                 let mut body = vec![0u8; len as usize];
                 pipe.read_exact(&mut body).await.expect("body");
                 println!("frame {n}: opcode={op} len={len}");
-                println!("  {}", String::from_utf8_lossy(&body));
+                // The AUTHORIZE reply carries a live OAuth code. It is single-use and
+                // short-lived, but printing secrets in a tool meant for bug reports invites
+                // pasting them into issues.
+                let text = String::from_utf8_lossy(&body);
+                println!("  {}", redact_code(&text));
             }
             Ok(Err(e)) => {
                 println!("frame {n}: read error: {e}");

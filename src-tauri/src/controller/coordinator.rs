@@ -25,6 +25,7 @@ use tracing::{debug, warn};
 const DISCORD_CONNECTION_STATUS_EVENT: &str = "DISCORD_CONNECTION_STATUS_EVENT";
 const DISCORD_VOICE_SETTINGS_EVENT: &str = "DISCORD_VOICE_SETTINGS_EVENT";
 const SERIAL_CONNECTION_STATUS_EVENT: &str = "SERIAL_CONNECTION_STATUS_EVENT";
+const DISCORD_AWAITING_AUTHORIZATION_EVENT: &str = "DISCORD_AWAITING_AUTHORIZATION_EVENT";
 
 /// Window the frontend runs in. Emitting while it is hidden is pointless work.
 const MAIN_WINDOW: &str = "main";
@@ -129,6 +130,14 @@ impl Coordinator {
                 self.voice_settings = settings;
                 self.push_to_device().await;
                 self.emit_voice_settings();
+            }
+            DiscordWorkerEvent::AwaitingAuthorization => {
+                // Emitted even while the window is hidden would be pointless, but this is the one
+                // case where the user has to be told to go and look at Discord.
+                debug!("Waiting for the user to accept Discord's authorisation modal");
+                if let Err(err) = self.app.emit(DISCORD_AWAITING_AUTHORIZATION_EVENT, ()) {
+                    debug!("Could not emit the authorisation notice: {err}");
+                }
             }
             DiscordWorkerEvent::ConnectionChanged { connected } => {
                 debug!("Discord connection changed: connected={connected}");

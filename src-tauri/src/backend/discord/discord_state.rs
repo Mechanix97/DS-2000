@@ -69,7 +69,16 @@ pub struct DiscordVoiceSettings {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DiscordWorkerEvent {
     VoiceSettingsChanged(DiscordVoiceSettings),
-    ConnectionChanged { connected: bool },
+    ConnectionChanged {
+        connected: bool,
+    },
+    /// Discord is showing its authorisation modal and nothing will progress until the user
+    /// accepts it.
+    ///
+    /// Worth announcing because that modal is drawn inside Discord's own window: with Discord
+    /// minimised to the tray it is queued and invisible, and the app otherwise just sits there
+    /// looking broken for three minutes.
+    AwaitingAuthorization,
 }
 
 /// `Clone` is required by the actor framework, not by this code: the state is moved through each
@@ -154,10 +163,11 @@ impl DiscordState {
 
         self.connecting = true;
         let events = self.events.clone();
+        let observer = self.observer.clone();
         let mut handle = handle.clone();
 
         tokio::spawn(async move {
-            let outcome = connect(credentials, events).await;
+            let outcome = connect(credentials, events, observer).await;
             let _ = handle
                 .cast(InMessage::ConnectFinished(Box::new(outcome)))
                 .await;
@@ -265,13 +275,14 @@ pub struct Connection {
 async fn connect(
     credentials: DiscordCredentials,
     events: mpsc::UnboundedSender<IpcEvent>,
+    observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
 ) -> Result<Connection, ConnectFailure> {
     let mut client = IpcClient::new(events);
 
     client.connect().await?;
     client.handshake(&credentials.client_id).await?;
 
-    let (token, tokens) = obtain_token(&mut client, &credentials).await?;
+    let (token, tokens) = obtain_token(&mut client, &credentials, &observer).await?;
     client.authenticate(&token).await?;
 
     // Subscribe before reading the current value: the other order leaves a window where a change
@@ -296,6 +307,7 @@ async fn connect(
 async fn obtain_token(
     client: &mut IpcClient,
     credentials: &DiscordCredentials,
+    observer: &mpsc::UnboundedSender<DiscordWorkerEvent>,
 ) -> Result<(String, (Option<String>, Option<String>)), DiscordError> {
     if let Some(access_token) = credentials.access_token.clone() {
         let refresh = credentials.refresh_token.clone();
@@ -320,6 +332,10 @@ async fn obtain_token(
             Err(err) => warn!("Could not refresh the access token, asking the user again: {err}"),
         }
     }
+
+    // Everything past this point waits on the user, so say so before blocking.
+    info!("Waiting for the authorisation to be accepted in Discord");
+    let _ = observer.send(DiscordWorkerEvent::AwaitingAuthorization);
 
     let code = client.authorize(DISCORD_SCOPES).await?;
     let tokens = oauth::exchange_code(
