@@ -221,6 +221,13 @@ impl DiscordState {
 pub enum ConnectFailure {
     /// The RPC pipe is not there, which is simply what a closed Discord looks like.
     DiscordNotRunning,
+    /// The user has to decide something before another attempt can succeed: accept the modal,
+    /// fix the redirect URI, supply a valid secret.
+    ///
+    /// Retrying these on a timer is worse than useless. It throws a modal at the user every few
+    /// seconds, and Discord rate-limits the repeated requests until it stops answering AUTHORIZE
+    /// altogether — which is exactly what happened while debugging this flow.
+    NeedsUserAction(String),
     Other(String),
 }
 
@@ -228,6 +235,16 @@ impl From<DiscordError> for ConnectFailure {
     fn from(err: DiscordError) -> Self {
         match err {
             DiscordError::PipeConnectionFailed => ConnectFailure::DiscordNotRunning,
+            // A timeout on a command that waits for a click means the click never came.
+            DiscordError::CommandTimedOut => ConnectFailure::NeedsUserAction(
+                "the authorisation modal was not accepted".to_owned(),
+            ),
+            err @ (DiscordError::OAuth { .. }
+            | DiscordError::AuthorizationFailed
+            | DiscordError::AuthenticationFailed) => {
+                ConnectFailure::NeedsUserAction(err.to_string())
+            }
+            DiscordError::Rpc(message) => ConnectFailure::NeedsUserAction(message),
             other => ConnectFailure::Other(other.to_string()),
         }
     }
@@ -359,18 +376,27 @@ impl GenServer for DiscordState {
                         self.update_voice_settings(connection.voice_settings).await;
                     }
                     Err(failure) => {
-                        // Discord simply not running is the common case and not worth a warning.
-                        match failure {
-                            ConnectFailure::DiscordNotRunning => {
-                                debug!("Discord is not running, will retry")
-                            }
-                            ConnectFailure::Other(reason) => {
-                                warn!("Could not connect to Discord: {reason}")
-                            }
-                        }
                         self.ipc_client.disconnect().await;
                         self.announce_connection();
-                        self.schedule_reconnect(handle);
+
+                        match failure {
+                            // The common case: Discord is closed. It will open eventually, so
+                            // keep trying.
+                            ConnectFailure::DiscordNotRunning => {
+                                debug!("Discord is not running, will retry");
+                                self.schedule_reconnect(handle);
+                            }
+                            ConnectFailure::Other(reason) => {
+                                warn!("Could not connect to Discord: {reason}");
+                                self.schedule_reconnect(handle);
+                            }
+                            // Nothing will change until the user does something, so stop. The
+                            // next attempt comes from them pressing Connect, which arrives as
+                            // SetCredentials.
+                            ConnectFailure::NeedsUserAction(reason) => {
+                                warn!("Discord authorisation needs your attention: {reason}");
+                            }
+                        }
                     }
                 }
                 CastResponse::NoReply(self)
@@ -392,19 +418,28 @@ impl GenServer for DiscordState {
 
             InMessage::SetCredentials(credentials) => {
                 let credentials = *credentials;
-                if self.credentials == credentials {
+                let changed = self.credentials != credentials;
+
+                // Already connected with exactly these credentials: nothing to do.
+                if !changed && self.ipc_client.is_connected() {
                     return CastResponse::NoReply(self);
                 }
 
-                // Any live session belongs to the previous application.
-                self.ipc_client.disconnect().await;
-                self.announce_connection();
-                self.credentials = credentials;
+                if changed {
+                    // Any live session belongs to the previous application.
+                    self.ipc_client.disconnect().await;
+                    self.announce_connection();
+                    self.credentials = credentials;
+                }
                 self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
 
                 if self.credentials.is_some() {
+                    // This message is also how the user retries after an authorisation failure,
+                    // which is the only thing that restarts a connection parked by
+                    // `NeedsUserAction`. Resending unchanged credentials therefore has to mean
+                    // "try again", not "nothing changed".
                     info!("Discord credentials set, connecting");
-                    self.schedule_reconnect(handle);
+                    self.begin_connecting(handle);
                 } else {
                     info!("Discord credentials cleared, connection stopped");
                 }
