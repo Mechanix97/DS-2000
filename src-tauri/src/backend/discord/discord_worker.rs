@@ -4,9 +4,9 @@ use crate::discord_state::{
     InMessage, OutMessage,
 };
 use crate::error::DiscordError;
-use crate::ipc::DiscordConnectionState;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Mutex, mpsc};
 
 pub struct DiscordWorker {
@@ -14,6 +14,10 @@ pub struct DiscordWorker {
     /// Shared with the state machine so reading the current voice state does not need a
     /// round-trip through the actor mailbox.
     voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
+    /// Also shared, and for a sharper reason: a connection attempt waits on the user clicking
+    /// Discord's authorisation modal, and asking the actor during that window would block until
+    /// the call timed out.
+    connected: Arc<AtomicBool>,
 }
 
 impl DiscordWorker {
@@ -26,12 +30,19 @@ impl DiscordWorker {
         observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
     ) -> Self {
         let voice_settings = Arc::new(Mutex::new(DiscordVoiceSettings::default()));
-        let discord_handler =
-            DiscordState::spawn(credentials, voice_settings.clone(), observer).await;
+        let connected = Arc::new(AtomicBool::new(false));
+        let discord_handler = DiscordState::spawn(
+            credentials,
+            voice_settings.clone(),
+            observer,
+            connected.clone(),
+        )
+        .await;
 
         Self {
             discord_handler,
             voice_settings,
+            connected,
         }
     }
 
@@ -69,13 +80,12 @@ impl DiscordWorker {
             .map_err(DiscordError::GenServerError)
     }
 
-    pub async fn is_connected(&mut self) -> Result<bool, DiscordError> {
-        let status: OutMessage = self
-            .discord_handler
-            .call(InCallMessage::DiscordStatus)
-            .await
-            .map_err(DiscordError::GenServerError)?;
-        Ok(status == OutMessage::DiscordStatus(DiscordConnectionState::Authenticated))
+    /// Whether an authenticated RPC session is open.
+    ///
+    /// Reads a shared flag rather than messaging the actor, so it answers even while a connection
+    /// attempt is parked on the user clicking Discord's authorisation modal.
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
     }
 
     pub async fn disconnect(&mut self) -> Result<(), DiscordError> {
@@ -133,7 +143,7 @@ mod tests {
 
         worker.start().await.expect("start is accepted");
 
-        assert!(!worker.is_connected().await.expect("status is readable"));
+        assert!(!worker.is_connected());
         assert!(worker.get_access_token().await.expect("readable").is_none());
     }
 
@@ -147,11 +157,40 @@ mod tests {
 
         sleep(Duration::from_millis(300)).await;
 
-        assert!(!worker.is_connected().await.expect("status is readable"));
+        assert!(!worker.is_connected());
         assert_eq!(
             worker.get_voice_settings().await,
             DiscordVoiceSettings::default()
         );
+    }
+
+    /// Waits for an authenticated session, giving up rather than hanging forever.
+    ///
+    /// The first run needs a human to accept Discord's authorisation modal, so the window is
+    /// generous — but a test that never returns tells you nothing.
+    async fn wait_until_connected(worker: &DiscordWorker) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(150);
+        while std::time::Instant::now() < deadline {
+            if worker.is_connected() {
+                return;
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+        panic!("no authenticated session after 150 s — was the authorisation modal accepted?");
+    }
+
+    /// Installs a log subscriber so `RUST_LOG` works in these tests.
+    ///
+    /// Without it the interactive tests are silent, and a connection stuck waiting on the
+    /// authorisation modal is indistinguishable from one failing for any other reason.
+    fn init_logging() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "discord=debug".into()),
+            )
+            .with_test_writer()
+            .try_init();
     }
 
     /// Reads the developer's own Discord application credentials, the same way a user supplies
@@ -178,6 +217,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a running Discord client and a local discord.env; run with --ignored"]
     async fn credentials_supplied_at_runtime_drive_a_full_connection() {
+        init_logging();
         let (observer, _observed) = mpsc::unbounded_channel();
         let mut worker = DiscordWorker::new(None, observer).await;
         worker.start().await.expect("start is accepted");
@@ -185,16 +225,14 @@ mod tests {
         // Nothing should happen until credentials arrive: this is the state a fresh install is
         // in, and it must not connect on its own.
         sleep(Duration::from_secs(1)).await;
-        assert!(!worker.is_connected().await.expect("status is readable"));
+        assert!(!worker.is_connected());
 
         worker
             .set_credentials(Some(credentials_from_env_file()))
             .await
             .expect("credentials accepted");
 
-        while !worker.is_connected().await.expect("status is readable") {
-            sleep(Duration::from_millis(100)).await;
-        }
+        wait_until_connected(&worker).await;
 
         worker
             .set_voice_settings(true, false)
@@ -221,13 +259,12 @@ mod tests {
     #[tokio::test]
     #[ignore = "interactive: toggle mute in Discord within 30 seconds; run with --ignored"]
     async fn muting_from_discord_reaches_the_app_as_a_pushed_event() {
+        init_logging();
         let (observer, _observed) = mpsc::unbounded_channel();
         let mut worker = DiscordWorker::new(Some(credentials_from_env_file()), observer).await;
         worker.start().await.expect("start is accepted");
 
-        while !worker.is_connected().await.expect("status is readable") {
-            sleep(Duration::from_millis(100)).await;
-        }
+        wait_until_connected(&worker).await;
 
         let initial = worker.get_voice_settings().await;
         println!("Connected. Toggle mute in Discord now — waiting up to 30 s...");

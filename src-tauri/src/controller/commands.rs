@@ -44,15 +44,11 @@ pub async fn ds_set_voice_settings_command(
 pub async fn discord_credentials_status(
     controller: State<'_, Arc<Mutex<Controller>>>,
 ) -> Result<DiscordCredentialsStatus, String> {
-    let mut controller = controller.lock().await;
+    let controller = controller.lock().await;
 
     let client_id = controller.config.discord_client_id().await;
     let has_client_secret = controller.has_discord_credentials().await;
-    let connected = controller
-        .discord_worker
-        .is_connected()
-        .await
-        .unwrap_or(false);
+    let connected = controller.discord_worker.is_connected();
 
     Ok(DiscordCredentialsStatus {
         client_id,

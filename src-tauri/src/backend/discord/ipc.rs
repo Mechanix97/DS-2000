@@ -37,8 +37,16 @@ type Transport = UnixStream;
 /// How long a command waits for its reply before giving up.
 ///
 /// Bounded so a dropped or malformed reply cannot park the connection forever; the state machine
-/// reconnects instead.
+/// reconnects instead. Discord answers these in milliseconds.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long `AUTHORIZE` waits, which is a different kind of waiting entirely.
+///
+/// It does not wait for Discord, it waits for a person to read a modal and click Authorize. Under
+/// the ordinary command timeout the request expired after ten seconds and the reconnect loop then
+/// queued a fresh modal on every retry, so the user was chasing a dialog that kept being replaced
+/// by another one.
+const AUTHORIZE_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Event Discord pushes once subscribed. Carries the same payload as `GET_VOICE_SETTINGS`.
 pub const VOICE_SETTINGS_UPDATE: &str = "VOICE_SETTINGS_UPDATE";
@@ -157,6 +165,15 @@ impl IpcClient {
         &self,
         build: impl FnOnce(&str) -> Result<PipeMessage, DiscordError>,
     ) -> Result<Value, DiscordError> {
+        self.request_within(COMMAND_TIMEOUT, build).await
+    }
+
+    /// Same as [`Self::request`] with an explicit deadline, for commands that wait on a human.
+    async fn request_within(
+        &self,
+        deadline: Duration,
+        build: impl FnOnce(&str) -> Result<PipeMessage, DiscordError>,
+    ) -> Result<Value, DiscordError> {
         let connection = self
             .connection
             .as_ref()
@@ -173,7 +190,7 @@ impl IpcClient {
             return Err(err);
         }
 
-        let payload = match timeout(COMMAND_TIMEOUT, rx).await {
+        let payload = match timeout(deadline, rx).await {
             Ok(Ok(payload)) => payload,
             // The sender was dropped: the reader task ended, so the connection is gone.
             Ok(Err(_)) => return Err(DiscordError::PipeNotConnected),
@@ -200,6 +217,10 @@ impl IpcClient {
     }
 
     /// Prompts the user with Discord's authorisation modal and returns the OAuth code.
+    ///
+    /// `scopes` is space separated here and sent as a JSON array, which is what Discord expects.
+    /// Sending the string as-is makes Discord read it as one scope whose name contains spaces; it
+    /// then answers nothing at all and the command times out ten seconds later with no hint why.
     pub async fn authorize(&mut self, scopes: &str) -> Result<String, DiscordError> {
         if self.state != DiscordConnectionState::HandshakeDone {
             return Err(DiscordError::HandshakeNotDone);
@@ -209,8 +230,10 @@ impl IpcClient {
             .clone()
             .ok_or(DiscordError::ClientIdNotFound)?;
 
+        let scopes: Vec<&str> = scopes.split_whitespace().collect();
+
         let payload = self
-            .request(|nonce| {
+            .request_within(AUTHORIZE_TIMEOUT, |nonce| {
                 PipeMessage::command(
                     "AUTHORIZE",
                     nonce,
@@ -389,6 +412,11 @@ async fn read_loop(
                 }
             }
             Ok(ResponseKind::Event { event, payload }) => {
+                if let Some(message) = error_message(&payload) {
+                    // An error with no nonce answers no particular command, so without this it
+                    // would vanish and the caller would only ever see a timeout.
+                    warn!("Discord reported an error: {message}");
+                }
                 if event == VOICE_SETTINGS_UPDATE {
                     match parse_voice_settings(&payload["data"]) {
                         Ok((mute, deafen)) => {
@@ -403,7 +431,13 @@ async fn read_loop(
                     }
                 }
             }
-            Ok(ResponseKind::Unsolicited(_)) => {}
+            Ok(ResponseKind::Unsolicited(payload)) => {
+                debug!(
+                    "Unsolicited frame from Discord: cmd={:?} evt={:?}",
+                    payload.get("cmd").and_then(|v| v.as_str()),
+                    payload.get("evt").and_then(|v| v.as_str())
+                );
+            }
             Err(err) => warn!("Could not parse a frame from Discord: {err}"),
         }
     }

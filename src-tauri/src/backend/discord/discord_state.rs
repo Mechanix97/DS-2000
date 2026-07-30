@@ -12,6 +12,7 @@ use spawned_concurrency::tasks::{
     CallResponse, CastResponse, GenServer, GenServerHandle, send_after,
 };
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::Duration;
 use tracing::{debug, info, warn};
@@ -36,6 +37,8 @@ pub enum InCallMessage {
 pub enum InMessage {
     /// Attempts to bring the connection up. Rescheduled with backoff only while it fails.
     Connect,
+    /// Result of an attempt that ran off the actor.
+    ConnectFinished(Box<Result<Connection, ConnectFailure>>),
     SetVoiceSetting(bool, bool),
     DisconnectChannel,
     /// Applies credentials entered at runtime, so connecting does not require a restart.
@@ -74,6 +77,14 @@ pub enum DiscordWorkerEvent {
 #[derive(Clone)]
 pub struct DiscordState {
     ipc_client: IpcClient,
+    /// Kept so a connection attempt running off the actor can build its own client wired to the
+    /// same event channel.
+    events: mpsc::UnboundedSender<IpcEvent>,
+    /// Readable without going through the mailbox, so a caller asking "are we connected?" is not
+    /// blocked while a connection attempt is in flight.
+    connected: Arc<AtomicBool>,
+    /// True while an attempt is running off the actor, so overlapping attempts cannot pile up.
+    connecting: bool,
     /// `None` until the user registers a Discord application. While it is `None` the state
     /// machine stays parked instead of retrying a connection it cannot possibly complete.
     credentials: Option<DiscordCredentials>,
@@ -93,11 +104,15 @@ impl DiscordState {
         credentials: Option<DiscordCredentials>,
         voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
         observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
+        connected: Arc<AtomicBool>,
     ) -> DiscordStateHandler {
         let (events_tx, mut events_rx) = mpsc::unbounded_channel();
 
         let state = Self {
-            ipc_client: IpcClient::new(events_tx),
+            ipc_client: IpcClient::new(events_tx.clone()),
+            events: events_tx,
+            connected: connected.clone(),
+            connecting: false,
             credentials,
             voice_settings,
             observer,
@@ -122,81 +137,31 @@ impl DiscordState {
         handle
     }
 
-    /// Runs the connect → handshake → authorise → authenticate → subscribe sequence.
+    /// Starts a connection attempt on its own task.
     ///
-    /// Done in one pass rather than one step per timer tick: every step is awaited anyway, and a
-    /// tick per step was the reason connecting used to take a second.
-    async fn establish_connection(&mut self) -> Result<(), DiscordError> {
-        let credentials = self
-            .credentials
-            .clone()
-            .ok_or(DiscordError::ClientIdNotFound)?;
-
-        self.ipc_client.connect().await?;
-        self.ipc_client.handshake(&credentials.client_id).await?;
-
-        let token = self.obtain_token(&credentials).await?;
-        self.ipc_client.authenticate(&token).await?;
-
-        // Subscribe first, then read the current value: doing it the other way round leaves a
-        // window where a change is neither in the snapshot nor delivered as an event.
-        self.ipc_client.subscribe_voice_settings().await?;
-
-        let (mute, deafen) = self.ipc_client.get_voice_settings().await?;
-        self.update_voice_settings(DiscordVoiceSettings { mute, deafen })
-            .await;
-
-        Ok(())
-    }
-
-    /// Produces a usable access token, reusing or refreshing what is stored before falling back
-    /// to prompting the user with Discord's authorisation modal.
-    async fn obtain_token(
-        &mut self,
-        credentials: &DiscordCredentials,
-    ) -> Result<String, DiscordError> {
-        if let Some(access_token) = credentials.access_token.clone() {
-            return Ok(access_token);
+    /// Deliberately *not* run inside the message handler. The sequence includes `AUTHORIZE`,
+    /// which blocks until the user clicks Discord's authorisation modal, and an actor handles one
+    /// message at a time. Doing it inline left the actor mute for as long as that modal stayed
+    /// open, so every `call` in that window timed out, breaking the Discord tab during the one
+    /// moment a new user is actually looking at it.
+    fn begin_connecting(&mut self, handle: &GenServerHandle<Self>) {
+        if self.connecting || self.shutdown {
+            return;
         }
+        let Some(credentials) = self.credentials.clone() else {
+            return;
+        };
 
-        if let Some(refresh_token) = credentials.refresh_token.clone() {
-            match oauth::refresh_access_token(
-                &credentials.client_id,
-                &credentials.client_secret,
-                &credentials.redirect_url,
-                &refresh_token,
-            )
-            .await
-            {
-                Ok(tokens) => {
-                    self.set_tokens(
-                        Some(tokens.access_token.clone()),
-                        Some(tokens.refresh_token),
-                    );
-                    return Ok(tokens.access_token);
-                }
-                Err(err) => {
-                    warn!("Could not refresh the access token, asking the user again: {err}");
-                    self.set_tokens(None, None);
-                }
-            }
-        }
+        self.connecting = true;
+        let events = self.events.clone();
+        let mut handle = handle.clone();
 
-        let code = self.ipc_client.authorize(DISCORD_SCOPES).await?;
-
-        let tokens = oauth::exchange_code(
-            &credentials.client_id,
-            &credentials.client_secret,
-            &credentials.redirect_url,
-            &code,
-        )
-        .await?;
-
-        self.set_tokens(
-            Some(tokens.access_token.clone()),
-            Some(tokens.refresh_token),
-        );
-        Ok(tokens.access_token)
+        tokio::spawn(async move {
+            let outcome = connect(credentials, events).await;
+            let _ = handle
+                .cast(InMessage::ConnectFinished(Box::new(outcome)))
+                .await;
+        });
     }
 
     fn set_tokens(&mut self, access_token: Option<String>, refresh_token: Option<String>) {
@@ -223,6 +188,9 @@ impl DiscordState {
     /// Announces a connection transition, once per transition.
     fn announce_connection(&mut self) {
         let connected = self.ipc_client.state == DiscordConnectionState::Authenticated;
+        // Published outside the mailbox too, so status stays readable while the actor is busy.
+        self.connected.store(connected, Ordering::Relaxed);
+
         if connected == self.announced_connected {
             return;
         }
@@ -241,6 +209,114 @@ impl DiscordState {
         send_after(self.reconnect_backoff, handle.clone(), InMessage::Connect);
         self.reconnect_backoff = (self.reconnect_backoff * 2).min(RECONNECT_BACKOFF_MAX);
     }
+}
+
+/// Why a connection attempt did not succeed.
+///
+/// A summary rather than the original error because the actor framework requires its messages to
+/// be `Clone`, and `DiscordError` wraps I/O and HTTP errors that are not. The actor only needs to
+/// tell "Discord is closed" apart from anything else; the detail is already logged where it
+/// happened.
+#[derive(Clone, Debug)]
+pub enum ConnectFailure {
+    /// The RPC pipe is not there, which is simply what a closed Discord looks like.
+    DiscordNotRunning,
+    Other(String),
+}
+
+impl From<DiscordError> for ConnectFailure {
+    fn from(err: DiscordError) -> Self {
+        match err {
+            DiscordError::PipeConnectionFailed => ConnectFailure::DiscordNotRunning,
+            other => ConnectFailure::Other(other.to_string()),
+        }
+    }
+}
+
+/// Everything a successful connection produces.
+#[derive(Clone)]
+pub struct Connection {
+    client: IpcClient,
+    tokens: (Option<String>, Option<String>),
+    voice_settings: DiscordVoiceSettings,
+}
+
+/// Runs the connect, handshake, authorise, authenticate and subscribe sequence.
+///
+/// A free function rather than a method so it cannot touch actor state while running off the
+/// actor: everything it learns comes back in [`Connection`].
+async fn connect(
+    credentials: DiscordCredentials,
+    events: mpsc::UnboundedSender<IpcEvent>,
+) -> Result<Connection, ConnectFailure> {
+    let mut client = IpcClient::new(events);
+
+    client.connect().await?;
+    client.handshake(&credentials.client_id).await?;
+
+    let (token, tokens) = obtain_token(&mut client, &credentials).await?;
+    client.authenticate(&token).await?;
+
+    // Subscribe before reading the current value: the other order leaves a window where a change
+    // is neither in the snapshot nor delivered as an event.
+    client.subscribe_voice_settings().await?;
+
+    let (mute, deafen) = client.get_voice_settings().await?;
+
+    Ok::<Connection, DiscordError>(Connection {
+        client,
+        tokens,
+        voice_settings: DiscordVoiceSettings { mute, deafen },
+    })
+    .map_err(ConnectFailure::from)
+}
+
+/// Produces a usable access token, reusing or refreshing what is stored before falling back to
+/// prompting the user with Discord's authorisation modal.
+///
+/// Returns the token to authenticate with plus the pair to persist, which differs from what was
+/// passed in when a refresh happened.
+async fn obtain_token(
+    client: &mut IpcClient,
+    credentials: &DiscordCredentials,
+) -> Result<(String, (Option<String>, Option<String>)), DiscordError> {
+    if let Some(access_token) = credentials.access_token.clone() {
+        let refresh = credentials.refresh_token.clone();
+        return Ok((access_token.clone(), (Some(access_token), refresh)));
+    }
+
+    if let Some(refresh_token) = credentials.refresh_token.clone() {
+        match oauth::refresh_access_token(
+            &credentials.client_id,
+            &credentials.client_secret,
+            &credentials.redirect_url,
+            &refresh_token,
+        )
+        .await
+        {
+            Ok(tokens) => {
+                return Ok((
+                    tokens.access_token.clone(),
+                    (Some(tokens.access_token), Some(tokens.refresh_token)),
+                ));
+            }
+            Err(err) => warn!("Could not refresh the access token, asking the user again: {err}"),
+        }
+    }
+
+    let code = client.authorize(DISCORD_SCOPES).await?;
+    let tokens = oauth::exchange_code(
+        &credentials.client_id,
+        &credentials.client_secret,
+        &credentials.redirect_url,
+        &code,
+    )
+    .await?;
+
+    Ok((
+        tokens.access_token.clone(),
+        (Some(tokens.access_token), Some(tokens.refresh_token)),
+    ))
 }
 
 impl GenServer for DiscordState {
@@ -265,22 +341,38 @@ impl GenServer for DiscordState {
                 if self.credentials.is_none() || self.ipc_client.is_connected() {
                     return CastResponse::NoReply(self);
                 }
+                self.begin_connecting(handle);
+                CastResponse::NoReply(self)
+            }
 
-                if let Err(err) = self.establish_connection().await {
-                    // Discord simply not running is the common case and not worth a warning.
-                    match err {
-                        DiscordError::PipeConnectionFailed => {
-                            debug!("Discord is not running, will retry")
-                        }
-                        other => warn!("Could not connect to Discord: {other}"),
+            InMessage::ConnectFinished(outcome) => {
+                self.connecting = false;
+
+                match *outcome {
+                    Ok(connection) => {
+                        self.ipc_client = connection.client;
+                        let (access, refresh) = connection.tokens;
+                        self.set_tokens(access, refresh);
+                        // Reset the backoff so a later drop retries promptly.
+                        self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
+                        self.announce_connection();
+                        self.update_voice_settings(connection.voice_settings).await;
                     }
-                    self.ipc_client.disconnect().await;
-                    self.schedule_reconnect(handle);
-                } else {
-                    // Connected: reset the backoff so a later drop retries promptly.
-                    self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
+                    Err(failure) => {
+                        // Discord simply not running is the common case and not worth a warning.
+                        match failure {
+                            ConnectFailure::DiscordNotRunning => {
+                                debug!("Discord is not running, will retry")
+                            }
+                            ConnectFailure::Other(reason) => {
+                                warn!("Could not connect to Discord: {reason}")
+                            }
+                        }
+                        self.ipc_client.disconnect().await;
+                        self.announce_connection();
+                        self.schedule_reconnect(handle);
+                    }
                 }
-                self.announce_connection();
                 CastResponse::NoReply(self)
             }
 
@@ -384,7 +476,10 @@ mod tests {
         let (observer, observed) = mpsc::unbounded_channel();
         (
             DiscordState {
-                ipc_client: IpcClient::new(ipc_tx),
+                ipc_client: IpcClient::new(ipc_tx.clone()),
+                events: ipc_tx,
+                connected: Arc::new(AtomicBool::new(false)),
+                connecting: false,
                 credentials: None,
                 voice_settings: Arc::new(Mutex::new(DiscordVoiceSettings::default())),
                 observer,

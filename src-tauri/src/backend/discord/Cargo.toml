@@ -16,5 +16,10 @@ rand.workspace = true
 spawned-rt.workspace = true
 spawned-concurrency.workspace = true
 
+[dev-dependencies]
+# The hardware and Discord tests are diagnostic by nature: without a subscriber installed,
+# RUST_LOG produces nothing and a stuck connection gives no clue why.
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
 [lib]
 path = "./mod.rs"
