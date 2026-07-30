@@ -193,8 +193,45 @@ mod tests {
             .try_init();
     }
 
+    /// Where the interactive tests cache the tokens they obtain.
+    ///
+    /// Discord shows its authorisation modal on every AUTHORIZE, so without a cache each run of
+    /// these tests needs a human to click again — which makes iterating on them impractical. The
+    /// real app has the same need and solves it with the OS keyring; a gitignored file next to
+    /// `discord.env`, which already holds the client secret in the clear, is enough here.
+    fn token_cache_path() -> PathBuf {
+        PathBuf::from("../../../../discord-tokens.json")
+    }
+
+    fn cached_tokens() -> (Option<String>, Option<String>) {
+        let Ok(raw) = std::fs::read_to_string(token_cache_path()) else {
+            return (None, None);
+        };
+        let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return (None, None);
+        };
+        (
+            parsed["access_token"].as_str().map(str::to_owned),
+            parsed["refresh_token"].as_str().map(str::to_owned),
+        )
+    }
+
+    /// Saves whatever the connection produced, so the next run skips the modal.
+    async fn cache_tokens(worker: &mut DiscordWorker) {
+        let access = worker.get_access_token().await.ok().flatten();
+        let refresh = worker.get_refresh_token().await.ok().flatten();
+        if access.is_none() {
+            return;
+        }
+        let json = serde_json::json!({ "access_token": access, "refresh_token": refresh });
+        let _ = std::fs::write(token_cache_path(), json.to_string());
+    }
+
     /// Reads the developer's own Discord application credentials, the same way a user supplies
     /// theirs through the UI.
+    ///
+    /// Cached tokens are attached when present, which is what lets a second run connect without
+    /// anyone touching Discord.
     fn credentials_from_env_file() -> DiscordCredentials {
         let file = File::open(PathBuf::from("../../../../discord.env")).expect("discord.env");
         for line in BufReader::new(file).lines() {
@@ -207,11 +244,13 @@ mod tests {
             }
         }
 
+        let (access, refresh) = cached_tokens();
         DiscordCredentials::new(
             std::env::var("DISCORD_CLIENT_ID").expect("DISCORD_CLIENT_ID"),
             std::env::var("DISCORD_SECRET_KEY").expect("DISCORD_SECRET_KEY"),
             "http://localhost/".to_owned(),
         )
+        .with_tokens(access, refresh)
     }
 
     #[tokio::test]
@@ -233,6 +272,7 @@ mod tests {
             .expect("credentials accepted");
 
         wait_until_connected(&worker).await;
+        cache_tokens(&mut worker).await;
 
         worker
             .set_voice_settings(true, false)
@@ -265,6 +305,7 @@ mod tests {
         worker.start().await.expect("start is accepted");
 
         wait_until_connected(&worker).await;
+        cache_tokens(&mut worker).await;
 
         let initial = worker.get_voice_settings().await;
         println!("Connected. Toggle mute in Discord now — waiting up to 30 s...");
