@@ -1,10 +1,24 @@
-//! Scratch diagnostic: raw handshake against Discord's RPC pipe, bypassing `IpcClient`.
+//! Diagnostic: raw handshake against Discord's RPC pipe, bypassing [`discord::ipc::IpcClient`].
+//!
+//! For a bug report this separates a Discord-side problem from one in our client in a single
+//! step: it writes the frames by hand and prints whatever comes back.
 //!
 //! Run with: `cargo run -p discord --example rawpipe -- <client_id>`
+//!
+//! Windows only, since it speaks to a named pipe directly. The Unix socket path is left out
+//! on purpose — this is a debugging aid for the platform the app actually supports.
 
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("rawpipe is a Windows-only diagnostic");
+}
+
+#[cfg(windows)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(windows)]
 use tokio::net::windows::named_pipe::ClientOptions;
 
+#[cfg(windows)]
 #[tokio::main]
 async fn main() {
     let client_id = std::env::args().nth(1).expect("client id");
