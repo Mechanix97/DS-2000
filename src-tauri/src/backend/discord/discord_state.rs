@@ -59,6 +59,16 @@ pub struct DiscordVoiceSettings {
     pub deafen: bool,
 }
 
+/// Something worth telling the controller about.
+///
+/// Emitted only on an actual change, so a consumer can treat every one of these as news and does
+/// not need to compare against what it already knew.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DiscordWorkerEvent {
+    VoiceSettingsChanged(DiscordVoiceSettings),
+    ConnectionChanged { connected: bool },
+}
+
 /// `Clone` is required by the actor framework, not by this code: the state is moved through each
 /// handler and handed back. Everything cloneable here is either cheap or an `Arc`.
 #[derive(Clone)]
@@ -68,6 +78,10 @@ pub struct DiscordState {
     /// machine stays parked instead of retrying a connection it cannot possibly complete.
     credentials: Option<DiscordCredentials>,
     voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
+    /// Where changes are announced. The controller listens here instead of polling.
+    observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
+    /// Last connection state announced, so `ConnectionChanged` really means changed.
+    announced_connected: bool,
     reconnect_backoff: Duration,
     /// Guards against several reconnect timers piling up, which would defeat the backoff.
     reconnect_scheduled: bool,
@@ -78,6 +92,7 @@ impl DiscordState {
     pub async fn spawn(
         credentials: Option<DiscordCredentials>,
         voice_settings: Arc<Mutex<DiscordVoiceSettings>>,
+        observer: mpsc::UnboundedSender<DiscordWorkerEvent>,
     ) -> DiscordStateHandler {
         let (events_tx, mut events_rx) = mpsc::unbounded_channel();
 
@@ -85,6 +100,8 @@ impl DiscordState {
             ipc_client: IpcClient::new(events_tx),
             credentials,
             voice_settings,
+            observer,
+            announced_connected: false,
             reconnect_backoff: RECONNECT_BACKOFF_MIN,
             reconnect_scheduled: false,
             shutdown: false,
@@ -126,7 +143,8 @@ impl DiscordState {
         self.ipc_client.subscribe_voice_settings().await?;
 
         let (mute, deafen) = self.ipc_client.get_voice_settings().await?;
-        *self.voice_settings.lock().await = DiscordVoiceSettings { mute, deafen };
+        self.update_voice_settings(DiscordVoiceSettings { mute, deafen })
+            .await;
 
         Ok(())
     }
@@ -188,6 +206,32 @@ impl DiscordState {
         }
     }
 
+    /// Records the voice state and announces it, but only if it actually moved.
+    async fn update_voice_settings(&mut self, settings: DiscordVoiceSettings) {
+        let mut current = self.voice_settings.lock().await;
+        if *current == settings {
+            return;
+        }
+        *current = settings;
+        drop(current);
+
+        let _ = self
+            .observer
+            .send(DiscordWorkerEvent::VoiceSettingsChanged(settings));
+    }
+
+    /// Announces a connection transition, once per transition.
+    fn announce_connection(&mut self) {
+        let connected = self.ipc_client.state == DiscordConnectionState::Authenticated;
+        if connected == self.announced_connected {
+            return;
+        }
+        self.announced_connected = connected;
+        let _ = self
+            .observer
+            .send(DiscordWorkerEvent::ConnectionChanged { connected });
+    }
+
     /// Schedules another attempt, doubling the delay up to the ceiling.
     fn schedule_reconnect(&mut self, handle: &GenServerHandle<Self>) {
         if self.shutdown || self.credentials.is_none() || self.reconnect_scheduled {
@@ -236,17 +280,20 @@ impl GenServer for DiscordState {
                     // Connected: reset the backoff so a later drop retries promptly.
                     self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
                 }
+                self.announce_connection();
                 CastResponse::NoReply(self)
             }
 
             InMessage::Ipc(IpcEvent::VoiceSettings { mute, deafen }) => {
                 debug!("Voice settings pushed by Discord — mute: {mute} deafen: {deafen}");
-                *self.voice_settings.lock().await = DiscordVoiceSettings { mute, deafen };
+                self.update_voice_settings(DiscordVoiceSettings { mute, deafen })
+                    .await;
                 CastResponse::NoReply(self)
             }
 
             InMessage::Ipc(IpcEvent::Disconnected) => {
                 self.ipc_client.disconnect().await;
+                self.announce_connection();
                 self.schedule_reconnect(handle);
                 CastResponse::NoReply(self)
             }
@@ -259,6 +306,7 @@ impl GenServer for DiscordState {
 
                 // Any live session belongs to the previous application.
                 self.ipc_client.disconnect().await;
+                self.announce_connection();
                 self.credentials = credentials;
                 self.reconnect_backoff = RECONNECT_BACKOFF_MIN;
 
@@ -275,6 +323,7 @@ impl GenServer for DiscordState {
                 if let Err(err) = self.ipc_client.set_voice_settings(mute, deafen).await {
                     warn!("Could not set voice settings: {err}");
                     self.ipc_client.disconnect().await;
+                    self.announce_connection();
                     self.schedule_reconnect(handle);
                 }
                 CastResponse::NoReply(self)
@@ -322,6 +371,97 @@ impl GenServer for DiscordState {
                 self.ipc_client.disconnect().await;
                 CallResponse::Reply(self, OutMessage::Done)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> (DiscordState, mpsc::UnboundedReceiver<DiscordWorkerEvent>) {
+        let (ipc_tx, _ipc_rx) = mpsc::unbounded_channel();
+        let (observer, observed) = mpsc::unbounded_channel();
+        (
+            DiscordState {
+                ipc_client: IpcClient::new(ipc_tx),
+                credentials: None,
+                voice_settings: Arc::new(Mutex::new(DiscordVoiceSettings::default())),
+                observer,
+                announced_connected: false,
+                reconnect_backoff: RECONNECT_BACKOFF_MIN,
+                reconnect_scheduled: false,
+                shutdown: false,
+            },
+            observed,
+        )
+    }
+
+    #[tokio::test]
+    async fn a_voice_change_is_announced_once_and_repeats_are_swallowed() {
+        // The coordinator treats every announcement as news and acts on it — pushing to the
+        // device and emitting to the webview — so a duplicate here becomes wasted work there.
+        let (mut state, mut observed) = state();
+        let muted = DiscordVoiceSettings {
+            mute: true,
+            deafen: false,
+        };
+
+        state.update_voice_settings(muted).await;
+        assert_eq!(
+            observed.try_recv().expect("an announcement"),
+            DiscordWorkerEvent::VoiceSettingsChanged(muted)
+        );
+
+        state.update_voice_settings(muted).await;
+        assert!(
+            observed.try_recv().is_err(),
+            "the same value must not be announced twice"
+        );
+
+        assert_eq!(*state.voice_settings.lock().await, muted);
+    }
+
+    #[tokio::test]
+    async fn a_connection_change_is_announced_once_per_transition() {
+        let (mut state, mut observed) = state();
+
+        // Still disconnected, so there is nothing to announce.
+        state.announce_connection();
+        assert!(observed.try_recv().is_err());
+
+        state.ipc_client.state = DiscordConnectionState::Authenticated;
+        state.announce_connection();
+        assert_eq!(
+            observed.try_recv().expect("an announcement"),
+            DiscordWorkerEvent::ConnectionChanged { connected: true }
+        );
+
+        state.announce_connection();
+        assert!(observed.try_recv().is_err());
+
+        state.ipc_client.state = DiscordConnectionState::NotConnected;
+        state.announce_connection();
+        assert_eq!(
+            observed.try_recv().expect("an announcement"),
+            DiscordWorkerEvent::ConnectionChanged { connected: false }
+        );
+    }
+
+    #[tokio::test]
+    async fn only_full_authentication_counts_as_connected() {
+        // A half-open connection must not light the indicator: the pipe being open says nothing
+        // about whether the RPC session is usable.
+        let (mut state, mut observed) = state();
+
+        for intermediate in [
+            DiscordConnectionState::Connected,
+            DiscordConnectionState::HandshakeDone,
+            DiscordConnectionState::Authorized,
+        ] {
+            state.ipc_client.state = intermediate;
+            state.announce_connection();
+            assert!(observed.try_recv().is_err());
         }
     }
 }
