@@ -17,11 +17,18 @@ build-installer-windows:
 clean:
 	@cd src-tauri && cargo clean
 
+# --workspace matters: without it cargo only looks at the root DS2000 package. The members are
+# compiled as dependencies but never linted, and none of their tests run -- `make test` reported
+# success while executing zero tests. These must stay in step with .github/workflows/ci.yml.
 lint:
-	@cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
+	@cd src-tauri && cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 test:
-	@cd src-tauri && cargo test -- --nocapture --test-threads=1
+	@cd src-tauri && cargo test --workspace -- --nocapture
+
+# Tests needing the DS-2000 plugged in or Discord running; they are #[ignore]d so CI stays green.
+test-hardware:
+	@cd src-tauri && cargo test --workspace -- --ignored --nocapture
 
 test-discord:
 	@cd src-tauri && cargo test -p discord
