@@ -6,12 +6,18 @@ use controller::coordinator::{Coordinator, UiRefreshHandle};
 use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::{Mutex, mpsc};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Window the frontend runs in.
 const MAIN_WINDOW: &str = "main";
+
+/// Size the window opens at. Previously in tauri.conf.json, which no longer declares a window:
+/// the webview is built on demand so that starting minimised does not pay for one.
+const WINDOW_WIDTH: f64 = 800.0;
+const WINDOW_HEIGHT: f64 = 600.0;
 
 /// Signals that shutdown has finished and the process may exit.
 ///
@@ -42,10 +48,27 @@ async fn main() {
     // second for the whole life of the process.
     let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<()>();
 
-    tauri::Builder::default()
-        // TODO: add a single-instance guard. Without one, a second launch fights the first for
-        // the serial port and the Discord pipe. The `tauri-plugin-single-instance` dependency
-        // was dropped while the feature stays unimplemented; re-add it when picking this up.
+    // Read before the builder runs: `setup` is synchronous and this decides whether a window is
+    // created at all.
+    let startup = controller.lock().await.config.settings().await;
+    let (start_minimized, start_with_windows) =
+        (startup.start_minimized, startup.start_with_windows);
+
+    let app = tauri::Builder::default()
+        // Must come first, as the plugin requires. A second launch would otherwise fight this one
+        // for the serial port and the Discord pipe, and with `start_minimized` the user would have
+        // no window to tell them an instance is already running.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            info!("Another instance was launched, focusing this one");
+            show_window(app);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            // Irrelevant on Windows, the only supported platform today, but the argument is not
+            // optional. No launch arguments: starting minimised is a preference that is read from
+            // the configuration on every start, however the process was launched.
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_shell::init())
         .manage(controller.clone())
         .manage(ui_refresh_tx.clone())
@@ -58,6 +81,8 @@ async fn main() {
             commands::discord_credentials_status,
             commands::discord_set_credentials,
             commands::discord_clear_credentials,
+            commands::startup_preferences,
+            commands::set_startup_preferences,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -98,6 +123,18 @@ async fn main() {
             })
             .build(app)?;
 
+            // The registry entry can drift from the configuration: an uninstall, a cleanup tool,
+            // or another machine syncing the config file. The configuration is what the user set,
+            // so it wins and the entry is brought back in line.
+            sync_autostart(app.handle(), start_with_windows);
+
+            if start_minimized {
+                info!("Starting minimised to the tray, no webview created");
+            } else if let Err(err) = create_window(app.handle()) {
+                // Without a window the app is still usable from the tray, so this is not fatal.
+                error!("Could not create the main window: {err}");
+            }
+
             // The coordinator reacts to the workers; it needs the app handle to reach the webview.
             let coordinator = Coordinator::new(app.handle().clone(), controller.clone());
             tauri::async_runtime::spawn(coordinator.run(
@@ -117,22 +154,80 @@ async fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building the tauri application");
+
+    app.run(|_app, event| {
+        // The app lives in the tray, so running out of windows is not a reason to exit. `code` is
+        // `None` only for that case; an explicit `exit(0)` from the tray carries one and is let
+        // through.
+        if let tauri::RunEvent::ExitRequested {
+            code: None, api, ..
+        } = event
+        {
+            api.prevent_exit();
+        }
+    });
 }
 
-/// Brings the window back and asks for a fresh state.
+/// Builds the main window, and with it the webview.
+///
+/// Deferred rather than declared in tauri.conf.json so that a minimised start pays for neither.
+fn create_window(app: &AppHandle) -> tauri::Result<()> {
+    debug!("Creating the main window");
+    WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::default())
+        .title("DS2000")
+        .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .build()?;
+    Ok(())
+}
+
+/// Brings the window up, creating it if this is the first time it is opened.
 ///
 /// The refresh matters because nothing is emitted while the window is hidden, so without it the
-/// UI would show whatever it last saw before being put away.
+/// UI would show whatever it last saw before being put away. A window built here does not need it
+/// — its frontend asks for the state itself — but sending it twice is harmless.
 fn show_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+    match app.get_webview_window(MAIN_WINDOW) {
+        Some(window) => {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        None => {
+            if let Err(err) = create_window(app) {
+                error!("Could not create the main window: {err}");
+                return;
+            }
+        }
     }
+
     if let Some(refresh) = app.try_state::<UiRefreshHandle>() {
         let _ = refresh.send(());
+    }
+}
+
+/// Makes the launch-at-login entry match the stored preference.
+fn sync_autostart(app: &AppHandle, wanted: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let manager = app.autolaunch();
+    match manager.is_enabled() {
+        Ok(current) if current == wanted => {}
+        Ok(_) => {
+            let result = if wanted {
+                manager.enable()
+            } else {
+                manager.disable()
+            };
+            match result {
+                Ok(()) => info!("Start with Windows set to {wanted}"),
+                // Not fatal: the preference simply does not take effect, and the user can retry
+                // from the UI. Refusing to start over a registry write would be worse.
+                Err(err) => warn!("Could not set start with Windows to {wanted}: {err}"),
+            }
+        }
+        Err(err) => warn!("Could not read the start with Windows setting: {err}"),
     }
 }
 
