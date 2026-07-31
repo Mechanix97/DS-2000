@@ -1,7 +1,9 @@
 use crate::controller::Controller;
 use crate::coordinator::UiRefreshHandle;
+use crate::tray::{TRAY_ID, tray_menu};
 use common::rgb_update::{LedRgb, RGBConfig, RGBMode};
 use config::credentials::URL_DISCORD_SETUP_GUIDE;
+use config::language::Language;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -152,6 +154,69 @@ pub async fn set_startup_preferences(
 
     debug!("Startup preferences updated: {preferences:?}");
     Ok(())
+}
+
+/// Language the UI should render in, resolved by the backend.
+///
+/// The backend resolves it rather than the webview because it renders the tray menu, which exists
+/// before any window does when the app starts minimised.
+#[tauri::command]
+pub async fn ui_language(controller: State<'_, Arc<Mutex<Controller>>>) -> Result<String, String> {
+    Ok(controller
+        .lock()
+        .await
+        .config
+        .language()
+        .await
+        .tag()
+        .to_owned())
+}
+
+/// Stores the chosen language and relabels the tray to match.
+#[tauri::command]
+pub async fn set_ui_language(
+    language: String,
+    app: AppHandle,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) -> Result<(), String> {
+    let language =
+        Language::from_tag(&language).ok_or_else(|| format!("Unsupported language: {language}"))?;
+
+    controller
+        .lock()
+        .await
+        .config
+        .update_language(Some(language.tag().to_owned()))
+        .await;
+
+    // The tray was built at startup in the previous language; without this it would keep it until
+    // the next launch.
+    relabel_tray(&app, language)?;
+
+    debug!("UI language set to {}", language.tag());
+    Ok(())
+}
+
+/// Rebuilds the tray menu in the given language.
+///
+/// Tauri menus are immutable once built, so changing a label means building a new menu and
+/// handing it to the existing tray icon.
+fn relabel_tray(app: &AppHandle, language: Language) -> Result<(), String> {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        // Nothing to relabel, which is not worth failing the language change over.
+        warn!("No tray icon with id {TRAY_ID}, leaving its labels alone");
+        return Ok(());
+    };
+
+    let menu = tray_menu(app, language).map_err(|err| {
+        warn!("Could not build the tray menu: {err}");
+        "Could not update the tray menu".to_owned()
+    })?;
+
+    tray.set_menu(Some(menu)).map_err(|err| {
+        warn!("Could not apply the tray menu: {err}");
+        "Could not update the tray menu".to_owned()
+    })
 }
 
 /// Version the application was built with.

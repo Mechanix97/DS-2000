@@ -1,0 +1,82 @@
+{
+  "menu": {
+    "rgb": "RGB",
+    "discord": "Discord",
+    "settings": "Configuración",
+    "about": "Acerca"
+  },
+  "tray": {
+    "show": "Abrir DS2000",
+    "quit": "Salir"
+  },
+  "user": {
+    "status": "En línea"
+  },
+  "icons": {
+    "microphone": "Micrófono",
+    "headphones": "Auriculares"
+  },
+  "rgb": {
+    "heading": "RGB",
+    "subtitle": "Configuración de iluminación.",
+    "mode": "Modo:",
+    "modeCycle": "Ciclar",
+    "modeFixed": "Fijo",
+    "modeWave": "Onda",
+    "brightness": "Brillo:",
+    "led1": "LED 1",
+    "led2": "LED 2",
+    "red": "Rojo:",
+    "green": "Verde:",
+    "blue": "Azul:"
+  },
+  "discord": {
+    "heading": "Discord",
+    "subtitle": "Conectá DS 2000 con tu cuenta de Discord.",
+    "intro": "Discord solo permite que una aplicación controle tu micrófono si vos mismo la creaste. Es gratis y se hace una sola vez.",
+    "guide": "Ver instrucciones paso a paso",
+    "clientId": "Client ID",
+    "clientIdPlaceholder": "Ej: 713524519830028368",
+    "clientSecret": "Client Secret",
+    "clientSecretPlaceholder": "Se muestra una sola vez en Discord",
+    "clientSecretStored": "Guardado — dejalo vacío para no cambiarlo",
+    "redirectHintBefore": "Acordate de agregar",
+    "redirectHintAfter": "en OAuth2 → Redirects, o la conexión va a fallar.",
+    "connect": "Conectar",
+    "unlink": "Desvincular",
+    "connected": "Conectado a Discord.",
+    "waiting": "Credenciales guardadas. Esperando a Discord…",
+    "statusFailed": "No se pudo leer el estado de Discord.",
+    "missingFields": "Completá el Client ID y el Client Secret.",
+    "saving": "Guardando…",
+    "saved": "Guardado. Autorizá la aplicación en la ventana de Discord.",
+    "unlinked": "Aplicación de Discord desvinculada.",
+    "awaitingAuthorization": "Abrí Discord y aceptá la solicitud de autorización."
+  },
+  "settings": {
+    "heading": "Configuración",
+    "subtitle": "Ajustes generales de la aplicación.",
+    "options": "Opciones de configuración:",
+    "startWithWindows": "Iniciar con Windows",
+    "startMinimized": "Iniciar minimizado",
+    "language": "Idioma:",
+    "saved": "Preferencias guardadas",
+    "loadFailed": "No se pudieron leer las preferencias de inicio",
+    "languageFailed": "No se pudo cambiar el idioma"
+  },
+  "about": {
+    "heading": "Acerca",
+    "subtitle": "Información sobre DS 2000.",
+    "version": "Versión:",
+    "developedBy": "Desarrollado por Mechardo Labs",
+    "terms": "Términos de servicio",
+    "privacy": "Política de privacidad",
+    "updates": "Buscar actualizaciones (TODO)"
+  },
+  "status": {
+    "discordConnected": "Discord: Conectado",
+    "discordDisconnected": "Discord: No conectado",
+    "serialConnected": "Serial: Conectado",
+    "serialDisconnected": "Serial: No conectado"
+  }
+}

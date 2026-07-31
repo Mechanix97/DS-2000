@@ -3,8 +3,8 @@
 use controller::commands;
 use controller::controller::Controller;
 use controller::coordinator::{Coordinator, UiRefreshHandle};
+use controller::tray::{MENU_QUIT, MENU_SHOW, TRAY_ID, tray_menu};
 use std::sync::Arc;
-use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::MacosLauncher;
@@ -48,11 +48,12 @@ async fn main() {
     // second for the whole life of the process.
     let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<()>();
 
-    // Read before the builder runs: `setup` is synchronous and this decides whether a window is
-    // created at all.
+    // Read before the builder runs: `setup` is synchronous, and these decide whether a window is
+    // created at all and what the tray is labelled in.
     let startup = controller.lock().await.config.settings().await;
     let (start_minimized, start_with_windows) =
         (startup.start_minimized, startup.start_with_windows);
+    let language = controller.lock().await.config.language().await;
 
     let app = tauri::Builder::default()
         // Must come first, as the plugin requires. A second launch would otherwise fight this one
@@ -83,6 +84,8 @@ async fn main() {
             commands::discord_clear_credentials,
             commands::startup_preferences,
             commands::set_startup_preferences,
+            commands::ui_language,
+            commands::set_ui_language,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -94,11 +97,9 @@ async fn main() {
             }
         })
         .setup(move |app| {
-            let quit_item = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
-            let show_item = MenuItem::with_id(app, "show", "Abrir DS2000", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let menu = tray_menu(app.handle(), language)?;
 
-            let mut tray = TrayIconBuilder::new().menu(&menu);
+            let mut tray = TrayIconBuilder::with_id(TRAY_ID).menu(&menu);
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());
             } else {
@@ -107,8 +108,8 @@ async fn main() {
             }
 
             tray.on_menu_event(|app_handle, event| match event.id.as_ref() {
-                "quit" => quit(app_handle.clone()),
-                "show" => show_window(app_handle),
+                MENU_QUIT => quit(app_handle.clone()),
+                MENU_SHOW => show_window(app_handle),
                 other => debug!("Unhandled tray menu item: {other}"),
             })
             .on_tray_icon_event(|tray, event| {

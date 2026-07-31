@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
+import { t, ready, onLanguageChange } from './i18n.js'
 
 const clientIdInput = document.getElementById('discord-client-id');
 const clientSecretInput = document.getElementById('discord-client-secret');
@@ -11,6 +12,7 @@ const guideLink = document.getElementById('discord-setup-guide');
 const feedback = document.getElementById('discord-feedback');
 
 let setupGuideUrl = null;
+let hasClientSecret = false;
 
 function showFeedback(message, kind) {
   feedback.textContent = message;
@@ -40,27 +42,34 @@ function applyStatus(status) {
   if (status.client_id) {
     clientIdInput.value = status.client_id;
   }
-  clientSecretInput.placeholder = status.has_client_secret
-    ? 'Guardado — dejalo vacío para no cambiarlo'
-    : 'Se muestra una sola vez en Discord';
+  hasClientSecret = status.has_client_secret;
+  applySecretPlaceholder();
 
   clearButton.style.display = status.has_client_secret ? 'inline-block' : 'none';
 
   if (status.connected) {
-    showFeedback('Conectado a Discord.', 'ok');
+    showFeedback(t('discord.connected'), 'ok');
   } else if (status.has_client_secret) {
-    showFeedback('Credenciales guardadas. Esperando a Discord…', null);
+    showFeedback(t('discord.waiting'), null);
   }
 
   return status;
+}
+
+// Not marked up with data-i18n-placeholder: which of the two placeholders applies depends on
+// whether a secret is stored, so the markup-driven pass would overwrite the right one.
+function applySecretPlaceholder() {
+  clientSecretInput.placeholder = hasClientSecret
+    ? t('discord.clientSecretStored')
+    : t('discord.clientSecretPlaceholder');
 }
 
 async function refreshStatus() {
   try {
     return applyStatus(await invoke('discord_credentials_status'));
   } catch (error) {
-    console.error('No se pudo leer el estado de Discord:', error);
-    showFeedback('No se pudo leer el estado de Discord.', 'error');
+    console.error('Could not read the Discord status:', error);
+    showFeedback(t('discord.statusFailed'), 'error');
     return null;
   }
 }
@@ -70,17 +79,17 @@ saveButton.addEventListener('click', async () => {
   const clientSecret = clientSecretInput.value.trim();
 
   if (!clientId || !clientSecret) {
-    showFeedback('Completá el Client ID y el Client Secret.', 'error');
+    showFeedback(t('discord.missingFields'), 'error');
     return;
   }
 
   saveButton.disabled = true;
-  showFeedback('Guardando…', null);
+  showFeedback(t('discord.saving'), null);
 
   try {
     await invoke('discord_set_credentials', { clientId, clientSecret });
     clientSecretInput.value = '';
-    showFeedback('Guardado. Autorizá la aplicación en la ventana de Discord.', 'ok');
+    showFeedback(t('discord.saved'), 'ok');
     await refreshStatus();
   } catch (error) {
     // The backend returns actionable messages, so surface them verbatim.
@@ -96,7 +105,7 @@ clearButton.addEventListener('click', async () => {
     await invoke('discord_clear_credentials');
     clientIdInput.value = '';
     clientSecretInput.value = '';
-    showFeedback('Aplicación de Discord desvinculada.', null);
+    showFeedback(t('discord.unlinked'), null);
     await refreshStatus();
   } catch (error) {
     showFeedback(String(error), 'error');
@@ -108,7 +117,7 @@ clearButton.addEventListener('click', async () => {
 // Discord draws its authorisation modal inside its own window, so with Discord minimised to the
 // tray the request is queued and invisible. Without this notice the app just looks stuck.
 listen('DISCORD_AWAITING_AUTHORIZATION_EVENT', () => {
-  showFeedback('Abrí Discord y aceptá la solicitud de autorización.', null);
+  showFeedback(t('discord.awaitingAuthorization'), null);
 });
 
 guideLink.addEventListener('click', async () => {
@@ -117,9 +126,14 @@ guideLink.addEventListener('click', async () => {
   }
 });
 
+// The placeholder is the only text here that survives a language change: the feedback line
+// describes something that just happened, so restating it in another language would be a lie
+// about when it happened.
+onLanguageChange(applySecretPlaceholder);
+
 // Open on the Discord tab when there is nothing configured yet: without credentials the app
 // cannot do anything useful, so that is where a new user needs to land.
-refreshStatus().then(status => {
+ready.then(refreshStatus).then(status => {
   if (status && !status.has_client_secret) {
     selectTab('discord');
   }

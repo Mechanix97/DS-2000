@@ -215,7 +215,12 @@ body {
 
 /* Slider label */
 .slider-container label {
-    width: 50px;
+    /* A minimum rather than a fixed width, so the rows still line up but a longer translation is
+       not overlapped by the control next to it: at 50px "Brillo:" fits and "Brightness:" does
+       not. */
+    min-width: 90px;
+    flex-shrink: 0;
+    white-space: nowrap;
     font-size: 14px;
     color: #dcddde;
 }
@@ -432,6 +437,11 @@ body {
     flex-direction: column;
     gap: 6px;
     margin-top: 16px;
+    /* .tab-body centres its children, which leaves an input at the browser's default width of
+       about twenty characters -- too narrow for a client secret, and it truncated the placeholder
+       in both languages. */
+    width: 100%;
+    max-width: 340px;
 }
 
 .field label {

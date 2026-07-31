@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { t, onLanguageChange } from './i18n.js'
 
 var mute = false;
 var deaf = false;
@@ -42,10 +43,10 @@ function updateConnectionStatus() {
   if (discordStatus) {
     discordStatus.classList.remove('connected', 'disconnected');
     if (discordConnected) {
-      discordStatus.textContent = 'Discord: Conectado';
+      discordStatus.textContent = t('status.discordConnected');
       discordStatus.classList.add('connected');
     } else {
-      discordStatus.textContent = 'Discord: No conectado';
+      discordStatus.textContent = t('status.discordDisconnected');
       discordStatus.classList.add('disconnected');
     }
   }
@@ -53,14 +54,18 @@ function updateConnectionStatus() {
   if (serialStatus) {
     serialStatus.classList.remove('connected', 'disconnected');
     if (serialConnected) {
-      serialStatus.textContent = 'Serial: Conectado';
+      serialStatus.textContent = t('status.serialConnected');
       serialStatus.classList.add('connected');
     } else {
-      serialStatus.textContent = 'Serial: No conectado';
+      serialStatus.textContent = t('status.serialDisconnected');
       serialStatus.classList.add('disconnected');
     }
   }
 }
+
+// These labels are written from JavaScript, so the markup-driven pass cannot reach them: they
+// have to be rewritten whenever the language changes.
+onLanguageChange(updateConnectionStatus);
 
 micIcon.addEventListener('click', () => {
   invoke('ds_set_voice_settings_command', { mute: !mute, deaf: deaf });
@@ -77,7 +82,7 @@ headsetIcon.addEventListener('click', () => {
 listen('DISCORD_VOICE_SETTINGS_EVENT', event => {
   const payload = event.payload;
   if (!payload || typeof payload !== 'object') {
-    console.error('Payload inesperado (voice):', payload);
+    console.error('Unexpected voice settings payload:', payload);
     return;
   }
   mute = Boolean(payload.mute);
@@ -174,6 +179,6 @@ led2BlueSlider.addEventListener('change', (event) => {
 invoke('app_version').then(version => {
   const el = document.getElementById('app-version');
   if (el) el.textContent = version;
-}).catch(error => console.error('No se pudo leer la versión:', error));
+}).catch(error => console.error('Could not read the version:', error));
 
 invoke('controller_start');
