@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
+import { t, ready, language, setLanguage } from './i18n.js'
 
 const startWithWindows = document.getElementById('start-with-windows');
 const startMinimized = document.getElementById('start-minimized');
+const languageSelector = document.getElementById('language-selector');
 const feedback = document.getElementById('startup-feedback');
 
 function showFeedback(message, kind) {
@@ -23,7 +25,7 @@ async function save() {
 
   try {
     await invoke('set_startup_preferences', { preferences });
-    showFeedback('Preferencias guardadas', 'ok');
+    showFeedback(t('settings.saved'), 'ok');
   } catch (error) {
     showFeedback(String(error), 'error');
     await load();
@@ -36,7 +38,7 @@ async function load() {
     startWithWindows.checked = preferences.startWithWindows;
     startMinimized.checked = preferences.startMinimized;
   } catch (error) {
-    showFeedback('No se pudieron leer las preferencias de inicio', 'error');
+    showFeedback(t('settings.loadFailed'), 'error');
     console.error('startup_preferences failed:', error);
   }
 }
@@ -44,4 +46,18 @@ async function load() {
 startWithWindows.addEventListener('change', save);
 startMinimized.addEventListener('change', save);
 
-load();
+languageSelector.addEventListener('change', async event => {
+  try {
+    await setLanguage(event.target.value);
+  } catch (error) {
+    // Put the selector back: the language did not change, so it must not claim otherwise.
+    languageSelector.value = language();
+    showFeedback(t('settings.languageFailed'), 'error');
+    console.error('set_ui_language failed:', error);
+  }
+});
+
+ready.then(() => {
+  languageSelector.value = language();
+  return load();
+});

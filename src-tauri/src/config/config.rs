@@ -5,6 +5,7 @@
 //! [`crate::credentials`].
 
 use crate::credentials::{self, CredentialError, Secret};
+use crate::language::{self, Language};
 use common::rgb_update::RGBConfig;
 
 use directories::BaseDirs;
@@ -148,6 +149,11 @@ impl Config {
 
     pub async fn last_used_port(&self) -> Option<String> {
         self.inner.lock().await.last_used_port.clone()
+    }
+
+    /// Language the UI should use, resolved against the system when none is stored.
+    pub async fn language(&self) -> Language {
+        language::resolve(self.inner.lock().await.language.as_deref())
     }
 
     pub async fn rgb_config(&self) -> RGBConfig {
