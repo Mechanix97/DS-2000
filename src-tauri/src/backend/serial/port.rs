@@ -211,6 +211,21 @@ fn available_ports() -> Result<Vec<PathBuf>, SerialPortError> {
 mod tests {
     use super::*;
 
+    /// Serialises the tests that open the real device.
+    ///
+    /// A serial port admits a single handle, and the test harness runs tests in parallel by
+    /// default, so without this the second test to start finds the port already taken and fails
+    /// with `PortNotConnected` — a failure about the harness, not about the device.
+    static DEVICE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Takes the device lock, ignoring poisoning: a panic in one hardware test should surface as
+    /// that test's own failure, not as a cascade through every later one.
+    fn claim_device() -> std::sync::MutexGuard<'static, ()> {
+        DEVICE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[tokio::test]
     async fn a_fresh_port_is_not_connected_and_refuses_to_send() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -238,6 +253,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     async fn autoconnect_finds_the_device_and_receives_its_frames() {
+        let _device = claim_device();
+
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut port = Port::new(tx);
 
@@ -270,6 +287,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     async fn the_port_can_be_reopened_after_disconnecting() {
+        let _device = claim_device();
+
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut port = Port::new(tx);
 
