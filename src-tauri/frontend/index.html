@@ -9,6 +9,7 @@
     <script type="module" src="backendEvents.js"></script>
     <script type="module" src="serverButtonEvents.js"></script>
     <script type="module" src="discordSetup.js"></script>
+    <script type="module" src="startupSettings.js"></script>
 </head>
 
 <body>
@@ -214,8 +215,9 @@
                 <div class="tab-body">
                     <!-- Contenido placeholder para Configuraciones -->
                     <p>Opciones de configuración:</p>
-                    <label><input type="checkbox" checked> Iniciar con windows</label><br>
-                    <label><input type="checkbox"> Iniciar minimizado</label>
+                    <label><input type="checkbox" id="start-with-windows"> Iniciar con Windows</label><br>
+                    <label><input type="checkbox" id="start-minimized"> Iniciar minimizado</label>
+                    <p id="startup-feedback" class="feedback"></p>
                     <div class="connection-status">
                         <p id="discord-status" class="disconnected">Discord: No conectado</p>
                         <p id="serial-status" class="disconnected">Serial: No conectado</p>

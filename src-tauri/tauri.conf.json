@@ -9,14 +9,7 @@
     "devUrl": "http://localhost:5173"
   },
   "app": {
-    "windows": [
-      {
-        "title": "DS2000",
-        "width": 800,
-        "height": 600,
-        "visible": true
-      }
-    ]
+    "windows": []
   },
   "plugins": {
     "shell": {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// What the Discord tab needs to render itself.
 ///
@@ -95,6 +95,63 @@ pub async fn discord_clear_credentials(
         .clear_discord_credentials()
         .await
         .map_err(|err| err.to_string())
+}
+
+/// How the application behaves when the machine starts.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupPreferences {
+    pub start_with_windows: bool,
+    /// Start into the tray without building a window. The webview, and the memory and CPU that
+    /// come with it, are only paid for once the user opens it.
+    pub start_minimized: bool,
+}
+
+#[tauri::command]
+pub async fn startup_preferences(
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) -> Result<StartupPreferences, String> {
+    let settings = controller.lock().await.config.settings().await;
+
+    Ok(StartupPreferences {
+        start_with_windows: settings.start_with_windows,
+        start_minimized: settings.start_minimized,
+    })
+}
+
+/// Stores the startup preferences and applies the launch-at-login one immediately.
+///
+/// Registering with the OS can fail on its own — a locked registry, a policy — so it is applied
+/// first and the preference is only stored once it took, keeping the checkbox honest about what
+/// will actually happen.
+#[tauri::command]
+pub async fn set_startup_preferences(
+    preferences: StartupPreferences,
+    app: AppHandle,
+    controller: State<'_, Arc<Mutex<Controller>>>,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let manager = app.autolaunch();
+    let applied = if preferences.start_with_windows {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    applied.map_err(|err| {
+        warn!("Could not change the start with Windows setting: {err}");
+        "Could not register the application to start with Windows".to_owned()
+    })?;
+
+    controller
+        .lock()
+        .await
+        .config
+        .update_startup_preferences(preferences.start_with_windows, preferences.start_minimized)
+        .await;
+
+    debug!("Startup preferences updated: {preferences:?}");
+    Ok(())
 }
 
 /// Version the application was built with.
@@ -215,6 +272,22 @@ mod tests {
             }
         );
         assert_eq!(RGBConfig::from(request("cycle")).rgb_mode, RGBMode::Cycle);
+    }
+
+    #[test]
+    fn startup_preferences_travel_as_the_frontend_spells_them() {
+        // The frontend sends these keys verbatim. Renaming a field without the serde attribute
+        // would leave the checkboxes silently doing nothing rather than failing loudly.
+        let parsed: StartupPreferences =
+            serde_json::from_str(r#"{"startWithWindows":true,"startMinimized":false}"#)
+                .expect("deserialises");
+
+        assert!(parsed.start_with_windows);
+        assert!(!parsed.start_minimized);
+        assert_eq!(
+            serde_json::to_string(&parsed).expect("serialises"),
+            r#"{"startWithWindows":true,"startMinimized":false}"#
+        );
     }
 
     #[test]
