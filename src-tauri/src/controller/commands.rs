@@ -3,9 +3,9 @@ use crate::coordinator::UiRefreshHandle;
 use common::rgb_update::{LedRgb, RGBConfig, RGBMode};
 use config::credentials::URL_DISCORD_SETUP_GUIDE;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
 use tracing::debug;
 
@@ -97,6 +97,15 @@ pub async fn discord_clear_credentials(
         .map_err(|err| err.to_string())
 }
 
+/// Version the application was built with.
+///
+/// Read from the Tauri package info so there is one source of truth. The About tab used to
+/// carry a hardcoded "1.0" while Cargo.toml said 0.1.0 and tauri.conf.json said 0.1.1.
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 #[tauri::command]
 pub async fn controller_start(ui_refresh: State<'_, UiRefreshHandle>) -> Result<(), String> {
     // The coordinator is already running by the time the frontend loads; the workers were started
@@ -107,47 +116,56 @@ pub async fn controller_start(ui_refresh: State<'_, UiRefreshHandle>) -> Result<
     Ok(())
 }
 
-// TODO: collapse these into a single `RGBConfig` payload deserialized from the frontend, which
-// also removes the mode-index coupling between `index.html` and this match.
-#[allow(clippy::too_many_arguments)]
+/// Lighting configuration as the frontend sends it.
+///
+/// The mode travels as a name rather than the index of a `<select>`. Coupling it to the option
+/// order meant reordering the dropdown silently changed what the device did — and they had in
+/// fact drifted apart: the UI's second option read "Respiración" while the backend mapped it to
+/// `Fixed`, and the third read "Fijo" while mapping to `Wave`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RgbRequest {
+    pub mode: RgbModeName,
+    pub brightness: u8,
+    pub led1: LedRgb,
+    pub led2: LedRgb,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum RgbModeName {
+    Cycle,
+    Fixed,
+    Wave,
+}
+
+impl From<RgbRequest> for RGBConfig {
+    fn from(request: RgbRequest) -> Self {
+        let RgbRequest {
+            mode,
+            brightness,
+            led1,
+            led2,
+        } = request;
+
+        RGBConfig {
+            brightness,
+            rgb_mode: match mode {
+                RgbModeName::Cycle => RGBMode::Cycle,
+                RgbModeName::Fixed => RGBMode::Fixed { led1, led2 },
+                RgbModeName::Wave => RGBMode::Wave { led1, led2 },
+            },
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn serial_set_rgb(
-    mode: u8,
-    brightness: u8,
-    led1_red: u8,
-    led1_green: u8,
-    led1_blue: u8,
-    led2_red: u8,
-    led2_green: u8,
-    led2_blue: u8,
+    request: RgbRequest,
     controller: State<'_, Arc<Mutex<Controller>>>,
 ) -> Result<(), String> {
-    let led1 = LedRgb {
-        red: led1_red,
-        green: led1_green,
-        blue: led1_blue,
-    };
-    let led2 = LedRgb {
-        red: led2_red,
-        green: led2_green,
-        blue: led2_blue,
-    };
-
-    let mut update = match mode {
-        0 => RGBConfig {
-            brightness,
-            rgb_mode: RGBMode::Cycle,
-        },
-        1 => RGBConfig {
-            brightness,
-            rgb_mode: RGBMode::Fixed { led1, led2 },
-        },
-        2 => RGBConfig {
-            brightness,
-            rgb_mode: RGBMode::Wave { led1, led2 },
-        },
-        _ => return Err("Invalid RGB mode".to_owned()),
-    };
+    let mut update = RGBConfig::from(request);
+    // 0xFF terminates a frame on the wire, so it cannot appear inside one.
     update.check_255();
 
     let mut controller = controller.lock().await;
@@ -160,4 +178,66 @@ pub async fn serial_set_rgb(
 
     debug!("RGB update: {update:?}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn led(red: u8, green: u8, blue: u8) -> LedRgb {
+        LedRgb { red, green, blue }
+    }
+
+    fn request(mode: &str) -> RgbRequest {
+        serde_json::from_str(&format!(
+            r#"{{"mode":"{mode}","brightness":128,
+                 "led1":{{"red":1,"green":2,"blue":3}},
+                 "led2":{{"red":4,"green":5,"blue":6}}}}"#
+        ))
+        .expect("deserialises")
+    }
+
+    #[test]
+    fn each_mode_name_maps_to_its_own_variant() {
+        // Guards the coupling that used to exist through the dropdown's option order.
+        assert_eq!(
+            RGBConfig::from(request("fixed")).rgb_mode,
+            RGBMode::Fixed {
+                led1: led(1, 2, 3),
+                led2: led(4, 5, 6)
+            }
+        );
+        assert_eq!(
+            RGBConfig::from(request("wave")).rgb_mode,
+            RGBMode::Wave {
+                led1: led(1, 2, 3),
+                led2: led(4, 5, 6)
+            }
+        );
+        assert_eq!(RGBConfig::from(request("cycle")).rgb_mode, RGBMode::Cycle);
+    }
+
+    #[test]
+    fn an_unknown_mode_is_rejected_rather_than_defaulted() {
+        assert!(serde_json::from_str::<RgbRequest>(r#"{"mode":"breathing","brightness":1,"led1":{"red":0,"green":0,"blue":0},"led2":{"red":0,"green":0,"blue":0}}"#).is_err());
+    }
+
+    #[test]
+    fn brightness_and_colours_never_carry_the_frame_delimiter() {
+        // 0xFF ends a frame, so a payload byte of 255 would cut it short.
+        let mut config = RGBConfig::from(request("fixed"));
+        config.brightness = 255;
+        config.rgb_mode = RGBMode::Fixed {
+            led1: led(255, 255, 255),
+            led2: led(255, 0, 255),
+        };
+        config.check_255();
+
+        assert_eq!(config.brightness, 254);
+        let RGBMode::Fixed { led1, led2 } = config.rgb_mode else {
+            panic!("mode preserved");
+        };
+        assert_eq!(led1, led(254, 254, 254));
+        assert_eq!(led2, led(254, 0, 254));
+    }
 }

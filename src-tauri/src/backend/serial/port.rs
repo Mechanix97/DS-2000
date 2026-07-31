@@ -211,6 +211,17 @@ fn available_ports() -> Result<Vec<PathBuf>, SerialPortError> {
 mod tests {
     use super::*;
 
+    /// Serialises the tests that open the real device.
+    ///
+    /// A serial port admits a single handle, and the test harness runs tests in parallel by
+    /// default, so without this the second test to start finds the port already taken and fails
+    /// with `PortNotConnected` — a failure about the harness, not about the device.
+    ///
+    /// Tokio's mutex rather than the standard one: the guard is held across the whole test body,
+    /// awaits included. It also does not poison, so one failing hardware test releases the device
+    /// instead of cascading into every later one.
+    static DEVICE: Mutex<()> = Mutex::const_new(());
+
     #[tokio::test]
     async fn a_fresh_port_is_not_connected_and_refuses_to_send() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -238,6 +249,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     async fn autoconnect_finds_the_device_and_receives_its_frames() {
+        let _device = DEVICE.lock().await;
+
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut port = Port::new(tx);
 
@@ -270,6 +283,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a DS-2000 device connected over USB; run with --ignored"]
     async fn the_port_can_be_reopened_after_disconnecting() {
+        let _device = DEVICE.lock().await;
+
         let (tx, _rx) = mpsc::unbounded_channel();
         let mut port = Port::new(tx);
 

@@ -51,6 +51,7 @@ async fn main() {
         .manage(ui_refresh_tx.clone())
         .manage(ShutdownSignal(shutdown_tx))
         .invoke_handler(tauri::generate_handler![
+            commands::app_version,
             commands::controller_start,
             commands::ds_set_voice_settings_command,
             commands::serial_set_rgb,

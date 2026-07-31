@@ -111,10 +111,21 @@ impl PipeMessage {
 
     /// Reads the header, returning the opcode and how many payload bytes follow.
     pub fn parse_header(header: [u8; HEADER_LEN]) -> Result<(Opcode, u32), DiscordError> {
-        let opcode = Opcode::new(u32::from_le_bytes(
-            header[0..4].try_into().expect("4 bytes"),
-        ));
-        let length = u32::from_le_bytes(header[4..8].try_into().expect("4 bytes"));
+        // Split into two fixed arrays so the conversion cannot fail, rather than slicing and
+        // asserting the length back.
+        let (opcode_bytes, length_bytes) = header.split_at(4);
+        let opcode = Opcode::new(u32::from_le_bytes([
+            opcode_bytes[0],
+            opcode_bytes[1],
+            opcode_bytes[2],
+            opcode_bytes[3],
+        ]));
+        let length = u32::from_le_bytes([
+            length_bytes[0],
+            length_bytes[1],
+            length_bytes[2],
+            length_bytes[3],
+        ]);
 
         if length > MAX_PAYLOAD_LEN {
             return Err(DiscordError::FrameTooLarge(length));
