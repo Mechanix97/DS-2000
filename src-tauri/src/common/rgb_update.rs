@@ -3,12 +3,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct RGBConfig {
     pub brightness: u8,
+    /// How fast the animated modes run, higher being faster. Ignored by `Fixed`, but carried on
+    /// every frame regardless so the byte always sits at the same offset.
+    pub speed: u8,
     pub rgb_mode: RGBMode,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum RGBMode {
-    Cycle,
+    Rainbow,
     Fixed { led1: LedRgb, led2: LedRgb },
     Breathing { led1: LedRgb, led2: LedRgb },
 }
@@ -25,7 +28,9 @@ impl Default for RGBConfig {
     fn default() -> Self {
         Self {
             brightness: 254,
-            rgb_mode: RGBMode::Cycle,
+            // The midpoint, which is the speed the firmware ran at before the control existed.
+            speed: 128,
+            rgb_mode: RGBMode::Rainbow,
         }
     }
 }
@@ -35,6 +40,11 @@ impl RGBConfig {
         if self.brightness == u8::MAX {
             self.brightness -= 1;
         }
+        // Speed travels in the payload like any other byte, so it is subject to the same rule:
+        // 255 is the frame delimiter and cannot appear inside a frame.
+        if self.speed == u8::MAX {
+            self.speed -= 1;
+        }
 
         self.rgb_mode.check_255();
     }
@@ -43,7 +53,7 @@ impl RGBConfig {
 impl RGBMode {
     pub fn check_255(&mut self) {
         match self {
-            RGBMode::Cycle => {}
+            RGBMode::Rainbow => {}
             RGBMode::Fixed { led1, led2 } => {
                 led1.check_255();
                 led2.check_255();
