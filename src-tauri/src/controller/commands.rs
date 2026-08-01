@@ -243,7 +243,7 @@ pub async fn controller_start(ui_refresh: State<'_, UiRefreshHandle>) -> Result<
 /// The mode travels as a name rather than the index of a `<select>`. Coupling it to the option
 /// order meant reordering the dropdown silently changed what the device did — and they had in
 /// fact drifted apart: the UI's second option read "Respiración" while the backend mapped it to
-/// `Fixed`, and the third read "Fijo" while mapping to `Wave`.
+/// `Fixed`, and the third read "Fijo" while mapping to `Breathing`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RgbRequest {
@@ -258,7 +258,7 @@ pub struct RgbRequest {
 pub enum RgbModeName {
     Cycle,
     Fixed,
-    Wave,
+    Breathing,
 }
 
 impl From<RgbRequest> for RGBConfig {
@@ -275,7 +275,7 @@ impl From<RgbRequest> for RGBConfig {
             rgb_mode: match mode {
                 RgbModeName::Cycle => RGBMode::Cycle,
                 RgbModeName::Fixed => RGBMode::Fixed { led1, led2 },
-                RgbModeName::Wave => RGBMode::Wave { led1, led2 },
+                RgbModeName::Breathing => RGBMode::Breathing { led1, led2 },
             },
         }
     }
@@ -330,8 +330,8 @@ mod tests {
             }
         );
         assert_eq!(
-            RGBConfig::from(request("wave")).rgb_mode,
-            RGBMode::Wave {
+            RGBConfig::from(request("breathing")).rgb_mode,
+            RGBMode::Breathing {
                 led1: led(1, 2, 3),
                 led2: led(4, 5, 6)
             }
@@ -357,7 +357,10 @@ mod tests {
 
     #[test]
     fn an_unknown_mode_is_rejected_rather_than_defaulted() {
-        assert!(serde_json::from_str::<RgbRequest>(r#"{"mode":"breathing","brightness":1,"led1":{"red":0,"green":0,"blue":0},"led2":{"red":0,"green":0,"blue":0}}"#).is_err());
+        // The name here only has to be one the enum does not carry. It used to be "breathing",
+        // which stopped being unknown the moment `Wave` was renamed to match what the UI and the
+        // firmware had always called that effect.
+        assert!(serde_json::from_str::<RgbRequest>(r#"{"mode":"strobe","brightness":1,"led1":{"red":0,"green":0,"blue":0},"led2":{"red":0,"green":0,"blue":0}}"#).is_err());
     }
 
     #[test]

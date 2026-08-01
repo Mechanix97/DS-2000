@@ -29,7 +29,7 @@ impl SerialFrame for RGBConfigMessage {
                 buf.put_u8(led2.green);
                 buf.put_u8(led2.blue);
             }
-            RGBMode::Wave { led1, led2 } => {
+            RGBMode::Breathing { led1, led2 } => {
                 buf.put_u8(0x02);
                 buf.put_u8(led1.red);
                 buf.put_u8(led1.green);
@@ -75,7 +75,7 @@ impl SerialFrame for RGBConfigMessage {
                 if mode == 0x01 {
                     RGBMode::Fixed { led1, led2 }
                 } else {
-                    RGBMode::Wave { led1, led2 }
+                    RGBMode::Breathing { led1, led2 }
                 }
             }
             _ => return Err(SerialMessageError::MalformedData),
@@ -131,7 +131,7 @@ mod tests {
         });
         round_trip(RGBConfig {
             brightness: 1,
-            rgb_mode: RGBMode::Wave { led1, led2 },
+            rgb_mode: RGBMode::Breathing { led1, led2 },
         });
     }
 

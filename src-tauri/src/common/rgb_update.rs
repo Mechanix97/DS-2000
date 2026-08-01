@@ -10,7 +10,7 @@ pub struct RGBConfig {
 pub enum RGBMode {
     Cycle,
     Fixed { led1: LedRgb, led2: LedRgb },
-    Wave { led1: LedRgb, led2: LedRgb },
+    Breathing { led1: LedRgb, led2: LedRgb },
 }
 
 /// Three bytes, so it is `Copy`: passing it by value is cheaper than a reference.
@@ -48,7 +48,7 @@ impl RGBMode {
                 led1.check_255();
                 led2.check_255();
             }
-            RGBMode::Wave { led1, led2 } => {
+            RGBMode::Breathing { led1, led2 } => {
                 led1.check_255();
                 led2.check_255();
             }
