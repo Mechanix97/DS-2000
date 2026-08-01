@@ -16,8 +16,16 @@ const MAIN_WINDOW: &str = "main";
 
 /// Size the window opens at. Previously in tauri.conf.json, which no longer declares a window:
 /// the webview is built on demand so that starting minimised does not pay for one.
-const WINDOW_WIDTH: f64 = 800.0;
-const WINDOW_HEIGHT: f64 = 600.0;
+///
+/// The server rail and the channel sidebar take a fixed 312px between them, so the width is what
+/// is left over that decides whether the content reads comfortably; 940 gives the RGB tab enough
+/// room to lay the two LED cards side by side.
+const WINDOW_WIDTH: f64 = 940.0;
+const WINDOW_HEIGHT: f64 = 660.0;
+
+/// Smallest size the layout still holds together at.
+const WINDOW_MIN_WIDTH: f64 = 720.0;
+const WINDOW_MIN_HEIGHT: f64 = 520.0;
 
 /// Signals that shutdown has finished and the process may exit.
 ///
@@ -179,6 +187,7 @@ fn create_window(app: &AppHandle) -> tauri::Result<()> {
     WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::default())
         .title("DS2000")
         .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .min_inner_size(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         .build()?;
     Ok(())
 }

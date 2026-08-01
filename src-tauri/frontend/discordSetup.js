@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
 import { t, ready, onLanguageChange } from './i18n.js'
+import { selectTab } from './tabs.js'
 
 const clientIdInput = document.getElementById('discord-client-id');
 const clientSecretInput = document.getElementById('discord-client-secret');
@@ -20,15 +21,6 @@ function showFeedback(message, kind) {
   if (kind) {
     feedback.classList.add(kind);
   }
-}
-
-function selectTab(tabName) {
-  document.querySelectorAll('.menu-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.tab === tabName);
-  });
-  document.querySelectorAll('.tab-content').forEach(content => {
-    content.style.display = content.id === tabName ? 'block' : 'none';
-  });
 }
 
 // The secret is never returned by the backend once stored, so the field stays empty and shows a
