@@ -106,8 +106,25 @@ document.querySelectorAll('input[type="range"]').forEach(slider => {
   valueSpan.textContent = slider.value;
   slider.addEventListener('input', () => {
     valueSpan.textContent = slider.value;
+    updateSwatches();
   });
 });
+
+const swatches = [
+  { element: document.getElementById('led1-swatch'), red: led1RedSlider, green: led1GreenSlider, blue: led1BlueSlider },
+  { element: document.getElementById('led2-swatch'), red: led2RedSlider, green: led2GreenSlider, blue: led2BlueSlider },
+];
+
+// Three numbers do not read as a colour, so each LED card previews its own.
+// Driven by the sliders alone: the device is write-only for RGB, so this shows
+// what was asked for rather than pretending to report back what it lit.
+function updateSwatches() {
+  swatches.forEach(({ element, red, green, blue }) => {
+    element.style.backgroundColor = `rgb(${red.value}, ${green.value}, ${blue.value})`;
+  });
+}
+
+updateSwatches();
 
 // Handle mode selector changes
 rgbModeSelector.addEventListener('change', (event) => {

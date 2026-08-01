@@ -1,5 +1,6 @@
 {
   "menu": {
+    "category": "Controles",
     "rgb": "RGB",
     "discord": "Discord",
     "settings": "Configuración",
@@ -19,6 +20,7 @@
   "rgb": {
     "heading": "RGB",
     "subtitle": "Configuración de iluminación.",
+    "general": "General",
     "mode": "Modo:",
     "modeCycle": "Ciclar",
     "modeFixed": "Fijo",
@@ -56,7 +58,9 @@
   "settings": {
     "heading": "Configuración",
     "subtitle": "Ajustes generales de la aplicación.",
-    "options": "Opciones de configuración:",
+    "startupSection": "Inicio",
+    "appSection": "Aplicación",
+    "statusSection": "Conexiones",
     "startWithWindows": "Iniciar con Windows",
     "startMinimized": "Iniciar minimizado",
     "language": "Idioma:",

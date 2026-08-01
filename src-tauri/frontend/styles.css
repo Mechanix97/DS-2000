@@ -1,13 +1,87 @@
-/* Estilos generales */
+/* ===========================================================================
+   DS 2000 — Discord-flavoured desktop shell.
+
+   The layout mirrors Discord's: a narrow server rail, a channel sidebar with
+   the user panel pinned to its bottom, and a content area whose header names
+   the current "channel". Colours come from Discord's dark theme so that the
+   homage reads as deliberate rather than approximate.
+   =========================================================================== */
+
+:root {
+    /* Surfaces, darkest (server rail) to lightest (content area). */
+    --bg-rail: #1e1f22;
+    --bg-sidebar: #2b2d31;
+    --bg-main: #313338;
+    --bg-userbar: #232428;
+    --bg-card: #2b2d31;
+    --bg-input: #1e1f22;
+    --bg-elevated: #111214;
+
+    --hover-soft: rgba(78, 80, 88, 0.3);
+    --hover-hard: rgba(78, 80, 88, 0.6);
+    --active-item: #404249;
+
+    --border: #3f4147;
+    --border-soft: rgba(255, 255, 255, 0.06);
+
+    --brand: #5865f2;
+    --brand-hover: #4752c4;
+    --brand-active: #3c45a5;
+    --green: #23a55a;
+    --red: #f23f43;
+
+    --text-strong: #f2f3f5;
+    --text: #dbdee1;
+    --text-muted: #949ba4;
+    --text-faint: #80848e;
+
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Discord's header shadow: three hairlines rather than a blur, which keeps
+       the edge crisp against the flat surfaces. */
+    --shadow-header: 0 1px 0 rgba(4, 4, 5, 0.2), 0 1.5px 0 rgba(6, 6, 7, 0.05), 0 2px 0 rgba(4, 4, 5, 0.05);
+    --shadow-pop: 0 8px 16px rgba(0, 0, 0, 0.24);
+
+    /* Discord's squircle easing: overshoots slightly so icons feel springy. */
+    --ease-squish: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Tells the platform to render native dropdowns and scrollbars dark. */
+    color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     padding: 0;
-    font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    background-color: #36393f;
-    color: #dcddde;
+    font-family: 'gg sans', 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    background-color: var(--bg-main);
+    color: var(--text);
     width: 100vw;
     height: 100vh;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    user-select: none;
+}
+
+/* Text the user may legitimately want to copy out. */
+input,
+code,
+#app-version {
+    user-select: text;
+}
+
+:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
 }
 
 .container {
@@ -16,515 +90,934 @@ body {
     height: 100%;
 }
 
-/* Sidebar de servidores */
+/* --- Scrollbars ---------------------------------------------------------- */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-rail);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #17181a;
+}
+
+/* ===========================================================================
+   Server rail
+   =========================================================================== */
+
 .servers-sidebar {
     width: 72px;
-    background-color: #202225;
+    flex-shrink: 0;
+    background-color: var(--bg-rail);
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 12px 0;
-    overflow-y: auto;
+    gap: 8px;
+    /* Not scrollable on purpose: a scroll container would clip the hover
+       tooltips, and the rail holds a fixed handful of icons. */
+    overflow: visible;
+}
+
+/* Wrapper rather than the button itself, so the selection pill can sit outside
+   the icon's own rounded clipping box. */
+.server-item {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* The white pill Discord grows along the left edge: a stub on hover, full
+   height once the item is selected. */
+.server-item::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    width: 4px;
+    height: 0;
+    background-color: var(--text-strong);
+    border-radius: 0 4px 4px 0;
+    transition: height 0.2s var(--ease-squish);
+    pointer-events: none;
+}
+
+.server-item:hover::before {
+    height: 20px;
+}
+
+.server-item:has(.server-icon.active)::before {
+    height: 40px;
+}
+
+/* Hover tooltip. */
+.server-item::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 60px;
+    padding: 8px 12px;
+    background-color: var(--bg-elevated);
+    color: var(--text-strong);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-pop);
+    opacity: 0;
+    transform: translateX(-6px);
+    transition: opacity 0.1s ease, transform 0.1s ease;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.server-item:hover::after {
+    opacity: 1;
+    transform: translateX(0);
 }
 
 .server-icon {
     width: 48px;
     height: 48px;
-    background-color: #36393f;
-    color: #ffffff;
-    font-size: 24px;
-    font-weight: bold;
+    padding: 0;
+    background-color: var(--bg-sidebar);
+    color: var(--text-strong);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 8px;
-    border-radius: 50%;
-    /* Circular for non-active icons */
-    cursor: pointer;
-    transition: border-radius 0.2s, background-color 0.2s;
     border: none;
+    border-radius: 50%;
+    cursor: pointer;
     overflow: hidden;
-    /* Ensure the image doesn't overflow the button */
+    transition: border-radius 0.2s var(--ease-squish), background-color 0.2s var(--ease-squish);
 }
 
-.server-icon:hover {
-    border-radius: 15px;
-    /* Rounded square for hover, Discord-like */
-    background-color: #5865f2;
-}
-
+.server-icon:hover,
 .server-icon.active {
-    border-radius: 15px;
-    /* Rounded square for active state */
-    background-color: #5865f2;
+    border-radius: var(--radius-lg);
+    background-color: var(--brand);
+}
+
+.server-icon:active {
+    transform: translateY(1px);
 }
 
 .server-icon img,
 .server-icon svg {
-    width: 100%;
-    /* Make image fill the button */
-    height: 100%;
-    /* Ensure image scales to button size */
+    width: 26px;
+    height: 26px;
     object-fit: contain;
-    /* Maintain aspect ratio without stretching */
     display: block;
-    /* Remove any inline spacing */
+    transition: transform 0.2s var(--ease-squish);
 }
 
-/* Panel de canales */
+/* The DS 2000 logo is a self-contained badge, so it fills the icon the way a
+   real server's artwork does instead of floating as a square inside it. */
+.server-icon.logo-fill img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* The Mechardo mark is a 16:9 wordmark: constraining it to a square shrinks the
+   lettering to a smudge, so only the width is pinned. */
+.server-icon.wordmark img {
+    width: 40px;
+    height: auto;
+}
+
+.server-icon:hover img,
+.server-icon:hover svg {
+    transform: scale(1.08);
+}
+
+/* Separates "ours" from "find us elsewhere", the way Discord separates direct
+   messages from servers. */
+.server-divider {
+    width: 32px;
+    height: 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 1px;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+/* ===========================================================================
+   Channel sidebar
+   =========================================================================== */
+
 .channels-panel {
+    /* Discord's own width, and the narrowest that fits "Mechardo Labs" in the
+       user panel without the name being clipped. */
     width: 240px;
-    background-color: #2f3136;
+    flex-shrink: 0;
+    background-color: var(--bg-sidebar);
     display: flex;
     flex-direction: column;
 }
 
 .server-header {
-    padding: 16px 10px 8px;
-    font-size: 16px;
+    display: flex;
+    align-items: center;
+    height: 48px;
+    flex-shrink: 0;
+    padding: 0 16px;
+    box-shadow: var(--shadow-header);
+    z-index: 2;
+}
+
+.server-header h3 {
+    margin: 0;
+    font-size: 15px;
     font-weight: 600;
-    border-bottom: 1px solid #202225;
+    color: var(--text-strong);
+    letter-spacing: 0.01em;
 }
 
 .channel-list {
     flex-grow: 1;
-    padding: 8px 8px 0;
+    padding: 16px 8px 0;
     overflow-y: auto;
+}
+
+.channel-category {
+    padding: 0 8px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
 }
 
 .channel-list ul {
     list-style: none;
     padding: 0;
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .menu-item {
     display: flex;
     align-items: center;
-    padding: 8px 8px;
+    gap: 6px;
+    height: 34px;
+    padding: 0 8px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 15px;
-    transition: background-color 0.1s;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .menu-item:hover {
-    background-color: #3a3c43;
+    background-color: var(--hover-soft);
+    color: var(--text);
 }
 
 .menu-item.active {
-    background-color: #393c43;
-    color: #ffffff;
+    background-color: var(--active-item);
+    color: var(--text-strong);
 }
 
-/* Panel de usuario */
+.channel-hash {
+    width: 20px;
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--text-faint);
+    line-height: 1;
+}
+
+.menu-item.active .channel-hash {
+    color: var(--text-muted);
+}
+
+.channel-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- User panel ---------------------------------------------------------- */
+
 .user-panel {
     display: flex;
     align-items: center;
-    background-color: #292b2f;
-    padding: 8px 10px;
+    flex-shrink: 0;
+    height: 52px;
+    background-color: var(--bg-userbar);
+    padding: 0 8px;
     gap: 8px;
-    border-top: 1px solid #202225;
+}
+
+.user-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-grow: 1;
+    min-width: 0;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.1s ease;
+}
+
+.user-card:hover {
+    background-color: var(--hover-soft);
 }
 
 .user-avatar {
     width: 32px;
     height: 32px;
-    background-color: #5865f2;
+    flex-shrink: 0;
+    background-color: var(--brand);
     border-radius: 50%;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* A monogram rather than the wordmark: at 32px the logo's lettering is a
+   smudge, and Discord's own default avatars are a flat mark on a colour. */
+.user-avatar {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1;
 }
 
 .user-avatar::after {
     content: '';
     position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 10px;
-    height: 10px;
-    background-color: #3ba55c;
+    bottom: -1px;
+    right: -1px;
+    width: 12px;
+    height: 12px;
+    background-color: var(--green);
     border-radius: 50%;
-    border: 2px solid #292b2f;
+    border: 3px solid var(--bg-userbar);
 }
 
 .user-info {
     flex-grow: 1;
+    min-width: 0;
+}
+
+.user-name,
+.user-status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .user-name {
     font-size: 14px;
     font-weight: 600;
+    color: var(--text-strong);
+    line-height: 1.2;
 }
 
 .user-status {
     font-size: 12px;
-    color: #b9bbbe;
+    color: var(--text-muted);
+    line-height: 1.2;
 }
 
 .user-icons {
     display: flex;
-    gap: 8px;
-}
-
-/* Área principal: Contenedor de pestañas */
-.main-container {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    background-color: #36393f;
-}
-
-.tab-content {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.tab-header {
-    padding: 16px;
-    border-bottom: 1px solid #202225;
-    box-shadow: 0 1px 0 rgba(4, 4, 5, 0.2);
-}
-
-.tab-header h4 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-}
-
-.tab-header p {
-    margin: 4px 0 0;
-    font-size: 14px;
-    color: #8e9297;
-}
-
-.tab-body {
-    flex-grow: 1;
-    padding: 20px;
-    overflow-y: auto;
-}
-
-/* Slider container */
-.slider-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 10px 0;
-    margin-right: 80px;
-}
-
-/* Slider label */
-.slider-container label {
-    /* A minimum rather than a fixed width, so the rows still line up but a longer translation is
-       not overlapped by the control next to it: at 50px "Brillo:" fits and "Brightness:" does
-       not. */
-    min-width: 90px;
+    gap: 2px;
     flex-shrink: 0;
-    white-space: nowrap;
-    font-size: 14px;
-    color: #dcddde;
-}
-
-/* Slider input */
-.slider-container input[type="range"] {
-    flex-grow: 1;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 8px;
-    background: #2f3136;
-    border-radius: 4px;
-    outline: none;
-    transition: background 0.2s;
-}
-
-/* Slider thumb */
-.slider-container input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: #5865f2;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.slider-container input[type="range"]::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background: #5865f2;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-/* Slider value display */
-.slider-container .slider-value {
-    width: 40px;
-    text-align: right;
-    font-size: 14px;
-    color: #dcddde;
-}
-
-/* Mode selector */
-.slider-container select {
-    flex-grow: 1;
-    height: 32px;
-    background-color: #2f3136;
-    color: #dcddde;
-    border: 1px solid #202225;
-    border-radius: 4px;
-    padding: 0 8px;
-    margin-right: 180px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.slider-container select:focus {
-    outline: none;
-    background-color: #393c43;
-}
-
-/* RGB sliders section */
-.rgb-sliders {
-    margin: 10px 0;
-}
-
-.rgb-sliders h5 {
-    margin: 10px 0 5px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #dcddde;
-}
-
-.tab-body {
-    flex-grow: 1;
-    padding: 20px;
-    overflow-y: auto;
-    display: flex;
-    /* Use flexbox for centering */
-    flex-direction: column;
-    /* Stack content vertically */
-    align-items: center;
-    /* Center content horizontally */
-}
-
-/* Container for link buttons to center them */
-.link-button-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.link-button {
-    padding: 8px 16px;
-    margin: 0;
-    font-size: 14px;
-    font-weight: 500;
-    color: #5865f2;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: text-decoration 0.2s, background-color 0.2s, color 0.2s;
-    width: fit-content;
-}
-
-.link-button:hover {
-    text-decoration: underline;
-    background-color: rgba(88, 101, 242, 0.1);
-    color: #7289da;
-}
-
-/* User panel icons */
-.user-icons {
-    display: flex;
-    gap: 8px;
 }
 
 .icon {
+    position: relative;
     cursor: pointer;
     width: 32px;
     height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    transition: background-color 0.2s;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.1s ease;
 }
 
 .icon:hover {
-    background-color: rgba(0, 0, 0, 0.2);
-    /* Darken background on hover */
+    background-color: var(--hover-hard);
 }
 
 .icon svg {
     width: 20px;
     height: 20px;
-    fill: #b9bbbe;
-    /* Default color (light gray) */
-    transition: fill 0.2s;
+    fill: var(--text-muted);
+    transition: fill 0.15s ease;
+}
+
+.icon:hover svg {
+    fill: var(--text);
 }
 
 .icon.muted svg,
 .icon.deafened svg {
-    fill: #ff0000;
-    /* Red when muted or deafened */
+    fill: var(--red);
 }
 
-
-.icon.muted #mic-slash,
-.icon.deafened #headset-slash {
-    display: block;
-    /* Show slash when muted or deafened */
-}
-
-/* Slash styling */
-#mic-slash,
-#headset-slash {
-    stroke: #ff0000;
-    /* Red slash */
-    stroke-width: 2.5;
-    /* Slightly thicker for visibility */
+/* The strike-through is drawn twice: once in the panel colour to carve a gap
+   out of the glyph, then once in red inside that gap. Without the carve the
+   red line is invisible against the red glyph. */
+.slash {
+    display: none;
+    fill: none;
     stroke-linecap: round;
 }
 
-/* Connection status container */
-.connection-status {
-    margin-top: 15px;
+.icon.muted .slash,
+.icon.deafened .slash {
+    display: block;
+}
+
+.slash-cut {
+    stroke: var(--bg-userbar);
+    stroke-width: 4;
+}
+
+.icon:hover .slash-cut {
+    /* The hover background sits over the panel colour, so the carve has to
+       follow it or the gap stops matching its surroundings. */
+    stroke: #3a3c42;
+}
+
+.slash-line {
+    stroke: var(--red);
+    stroke-width: 2;
+}
+
+/* ===========================================================================
+   Content area
+   =========================================================================== */
+
+.main-container {
+    flex-grow: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    background-color: var(--bg-main);
 }
 
-/* Connection status text */
-.connection-status p {
-    font-size: 14px;
-    color: #dcddde;
-    /* Light gray text, matching app theme */
+.tab-content {
+    display: none;
+    flex-direction: column;
+    flex-grow: 1;
+    min-height: 0;
+}
+
+.tab-content.active {
+    display: flex;
+    animation: tab-in 0.18s ease;
+}
+
+@keyframes tab-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.tab-header {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    box-shadow: var(--shadow-header);
+    z-index: 1;
+}
+
+.tab-header h4 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-strong);
 }
 
-/* Connected state */
-.connection-status .connected {
-    color: #43b581;
-    /* Discord green for connected */
+.tab-header .channel-hash {
+    font-size: 22px;
 }
 
-/* Disconnected state */
-.connection-status .disconnected {
-    color: #f04747;
-    /* Discord red for disconnected */
+.tab-header p {
+    margin: 2px 0 0 26px;
+    font-size: 13px;
+    color: var(--text-muted);
 }
 
-/* ---------------------------------------------------------------------------
-   Discord tab: the one-time setup form for the user's own Discord application
-   --------------------------------------------------------------------------- */
+.tab-body {
+    flex-grow: 1;
+    min-height: 0;
+    padding: 20px 16px 32px;
+    overflow-y: auto;
+}
+
+/* Caps the measure so a wide window does not stretch a form across the screen,
+   while a narrow one still uses everything it has. Left-aligned rather than
+   centred so the column stays under the header's title instead of drifting
+   away from it once the window is maximised. */
+.content {
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* --- Cards --------------------------------------------------------------- */
+
+.card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.card-title {
+    margin: 0 0 12px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+}
+
+.card-divider {
+    height: 1px;
+    background-color: var(--border-soft);
+    margin: 12px 0;
+}
+
+/* ===========================================================================
+   Controls
+   =========================================================================== */
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: 6px 0;
+}
+
+.slider-container+.slider-container {
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.slider-container label {
+    /* A minimum rather than a fixed width, so the rows still line up but a
+       longer translation is not overlapped by the control next to it: at 50px
+       "Brillo:" fits and "Brightness:" does not. */
+    min-width: 88px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+/* --- Range sliders ------------------------------------------------------- */
+
+input[type="range"] {
+    flex-grow: 1;
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+    transition: transform 0.12s ease;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.25);
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* The track carries the meaning for these: the gradient shows what the slider
+   is actually dialling, so no separate legend is needed. */
+.track-brightness input[type="range"] {
+    background: linear-gradient(90deg, #101114, #ffffff);
+}
+
+.track-red input[type="range"] {
+    background: linear-gradient(90deg, #101114, #ff2d2d);
+}
+
+.track-green input[type="range"] {
+    background: linear-gradient(90deg, #101114, #24e05a);
+}
+
+.track-blue input[type="range"] {
+    background: linear-gradient(90deg, #101114, #2d7bff);
+}
+
+.slider-value {
+    width: 38px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Consolas', 'SFMono-Regular', 'Menlo', monospace;
+    color: var(--text-muted);
+}
+
+/* --- Selects ------------------------------------------------------------- */
+
+select {
+    flex-grow: 1;
+    min-width: 0;
+    height: 34px;
+    background-color: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--bg-input);
+    border-radius: var(--radius-sm);
+    padding: 0 32px 0 10px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23949ba4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+    transition: border-color 0.15s ease;
+}
+
+select:hover {
+    border-color: var(--border);
+}
+
+select:focus {
+    outline: none;
+    border-color: var(--brand);
+}
+
+/* --- Toggle switches ----------------------------------------------------- */
+
+.switch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    cursor: pointer;
+}
+
+.switch-row+.switch-row {
+    border-top: 1px solid var(--border-soft);
+}
+
+.switch-row span {
+    flex-grow: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+/* Styled on the checkbox itself: the element the backend reads stays the one
+   the user clicks, so nothing has to keep a proxy in sync. */
+.switch {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex-shrink: 0;
+    width: 40px;
+    height: 24px;
+    margin: 0;
+    background-color: var(--text-faint);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.18s ease;
+}
+
+.switch::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 16px;
+    height: 16px;
+    background-color: #ffffff;
+    border-radius: 50%;
+    transition: transform 0.18s var(--ease-squish);
+}
+
+.switch:checked {
+    background-color: var(--green);
+}
+
+.switch:checked::before {
+    transform: translateX(16px);
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+.button-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.primary-button,
+.secondary-button {
+    padding: 0 16px;
+    height: 38px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background-color 0.17s ease;
+}
+
+.primary-button {
+    color: #ffffff;
+    background-color: var(--brand);
+}
+
+.primary-button:hover:not(:disabled) {
+    background-color: var(--brand-hover);
+}
+
+.primary-button:active:not(:disabled) {
+    background-color: var(--brand-active);
+}
+
+.secondary-button {
+    color: var(--text);
+    background-color: #4e5058;
+}
+
+.secondary-button:hover:not(:disabled) {
+    background-color: #6d6f78;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.link-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #00a8fc;
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: fit-content;
+    transition: color 0.15s ease;
+}
+
+.link-button:hover {
+    text-decoration: underline;
+    color: #4dc4ff;
+}
+
+/* ===========================================================================
+   RGB tab
+   =========================================================================== */
+
+.led-grid {
+    display: grid;
+    /* One column in the default window, two as soon as the user gives it the
+       room. The LED cards are toggled with an inline display by the script,
+       which still participates in the grid. */
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.rgb-sliders {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+}
+
+.led-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.rgb-sliders h5 {
+    margin: 0;
+    flex-grow: 1;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+}
+
+/* Live preview of the three channels combined: the point of the tab, and far
+   quicker to read than three numbers. */
+.led-swatch {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
+    background-color: #ff0000;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    transition: background-color 0.1s linear, box-shadow 0.1s linear;
+}
+
+/* Narrower labels inside the LED cards: the colour names are short, and the
+   card has to fit two-up. */
+.rgb-sliders .slider-container label {
+    min-width: 58px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Colour chips are drawn with a pseudo-element so the translation pass, which
+   overwrites the label's text, cannot wipe them. */
+.rgb-sliders .slider-container label::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+.track-red label::before {
+    background-color: #ff2d2d;
+}
+
+.track-green label::before {
+    background-color: #24e05a;
+}
+
+.track-blue label::before {
+    background-color: #2d7bff;
+}
+
+/* ===========================================================================
+   Discord tab
+   =========================================================================== */
 
 .discord-intro {
     font-size: 14px;
-    line-height: 1.5;
-    color: #b9bbbe;
-    margin: 0 0 4px;
+    line-height: 1.55;
+    color: var(--text-muted);
+    margin: 0 0 10px;
 }
 
 .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.field+.field {
     margin-top: 16px;
-    /* .tab-body centres its children, which leaves an input at the browser's default width of
-       about twenty characters -- too narrow for a client secret, and it truncated the placeholder
-       in both languages. */
-    width: 100%;
-    max-width: 340px;
 }
 
 .field label {
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.02em;
-    color: #b9bbbe;
+    color: var(--text-muted);
 }
 
 .field input {
+    width: 100%;
     padding: 10px 12px;
     font-size: 14px;
     font-family: inherit;
-    color: #dcddde;
-    background-color: #202225;
-    border: 1px solid #202225;
-    border-radius: 4px;
+    color: var(--text-strong);
+    background-color: var(--bg-input);
+    border: 1px solid var(--bg-input);
+    border-radius: var(--radius-sm);
     outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.field input:hover {
+    border-color: var(--border);
 }
 
 .field input:focus {
-    border-color: #5865f2;
+    border-color: var(--brand);
 }
 
 .field input::placeholder {
-    color: #72767d;
+    color: var(--text-faint);
 }
 
 .field-hint {
     font-size: 13px;
-    line-height: 1.5;
-    color: #b9bbbe;
-    margin: 12px 0 0;
+    line-height: 1.6;
+    color: var(--text-muted);
+    margin: 14px 0 0;
 }
 
 .field-hint code {
-    padding: 2px 5px;
+    padding: 2px 6px;
     font-size: 12px;
-    color: #dcddde;
-    background-color: #202225;
-    border-radius: 3px;
-}
-
-.button-row {
-    display: flex;
-    gap: 10px;
-    margin-top: 20px;
-}
-
-.primary-button,
-.secondary-button {
-    padding: 10px 18px;
-    font-size: 14px;
-    font-weight: 500;
-    font-family: inherit;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.primary-button {
-    color: #ffffff;
-    background-color: #5865f2;
-}
-
-.primary-button:hover:not(:disabled) {
-    background-color: #4752c4;
-}
-
-.secondary-button {
-    color: #dcddde;
-    background-color: #4f545c;
-}
-
-.secondary-button:hover:not(:disabled) {
-    background-color: #5d6269;
-}
-
-.primary-button:disabled,
-.secondary-button:disabled {
-    opacity: 0.5;
-    cursor: default;
+    font-family: 'Consolas', 'SFMono-Regular', 'Menlo', monospace;
+    color: var(--text-strong);
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
 }
 
 /* Reserves its line so the layout does not jump when a message appears. */
@@ -532,13 +1025,125 @@ body {
     min-height: 20px;
     margin: 14px 0 0;
     font-size: 13px;
-    color: #b9bbbe;
+    color: var(--text-muted);
 }
 
 .feedback.ok {
-    color: #43b581;
+    color: var(--green);
 }
 
 .feedback.error {
-    color: #f04747;
+    color: var(--red);
+}
+
+/* ===========================================================================
+   Connection status
+   =========================================================================== */
+
+.connection-status {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* The dot is a pseudo-element because the script rewrites these lines with
+   textContent, which would discard any real child node. */
+.connection-status p {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: var(--text);
+    margin: 0;
+}
+
+.connection-status p::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    border-radius: 50%;
+    background-color: currentColor;
+    box-shadow: 0 0 6px currentColor;
+}
+
+.connection-status .connected {
+    color: var(--green);
+}
+
+.connection-status .disconnected {
+    color: var(--red);
+}
+
+/* ===========================================================================
+   About tab
+   =========================================================================== */
+
+.about-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+    padding: 8px 0 4px;
+}
+
+.about-logo {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
+    /* The artwork carries its own dark backing, so it needs the corner radius
+       to read as a badge rather than a stray square on the page. */
+    border-radius: 18px;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+}
+
+.about-name {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: 0.01em;
+}
+
+.about-version {
+    display: inline-block;
+    padding: 3px 10px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-family: 'Consolas', 'SFMono-Regular', 'Menlo', monospace;
+    color: var(--text-muted);
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+}
+
+.about-author {
+    margin: 8px 0 0;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.about-links {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.about-note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }

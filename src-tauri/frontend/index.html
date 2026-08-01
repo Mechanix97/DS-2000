@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DS 2000</title>
     <link rel="stylesheet" href="styles.css">
+    <script type="module" src="tabs.js"></script>
     <script type="module" src="backendEvents.js"></script>
     <script type="module" src="serverButtonEvents.js"></script>
     <script type="module" src="discordSetup.js"></script>
@@ -14,82 +15,111 @@
 
 <body>
     <div class="container">
-        <!-- Sidebar de servidores (izquierda estrecha, altura completa) -->
-        <div class="servers-sidebar">
-            <button class="server-icon active" id="DS2000-button">
-                <img src="static/ds2000-logo.png" alt="DS 2000 Logo" style="width: 50px; height: 50px;">
-            </button>
-            <button class="server-icon" id="Mechardo-Labs-button">
-                <img src="static/Mechardo-labs.svg" alt="DS 2000 Logo"
-                    style="width: 44px; height: 44px; filter: brightness(0) invert(1);">
-            </button>
-            <button class="server-icon" id="instagram-button">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img">
-                    &#x3C;title>Instagram&#x3C;/title>
-                    <path
-                        d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.9 3.9 0 0 0-1.417.923A3.9 3.9 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.7.01 5.555 0 5.827 0 8.001c0 2.172.01 2.444.048 3.297.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.298-.048c.851-.04 1.434-.174 1.943-.372a3.9 3.9 0 0 0 1.416-.923c.445-.445.718-.891.923-1.417.197-.509.332-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.445-.048-3.299c-.04-.851-.175-1.433-.372-1.941a3.9 3.9 0 0 0-.923-1.417A3.9 3.9 0 0 0 13.24.42c-.51-.198-1.092-.333-1.943-.372C10.443.01 10.172 0 7.998 0zm-.717 1.442h.718c2.136 0 2.389.007 3.232.046.78.035 1.204.166 1.486.275.373.145.64.319.92.599s.453.546.598.92c.11.281.24.705.275 1.485.039.843.047 1.096.047 3.231s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.485a2.5 2.5 0 0 1-.599.919c-.28.28-.546.453-.92.598-.28.11-.704.24-1.485.276-.843.038-1.096.047-3.232.047s-2.39-.009-3.233-.047c-.78-.036-1.203-.166-1.485-.276a2.5 2.5 0 0 1-.92-.598 2.5 2.5 0 0 1-.6-.92c-.109-.281-.24-.705-.275-1.485-.038-.843-.046-1.096-.046-3.233s.008-2.388.046-3.231c.036-.78.166-1.204.276-1.486.145-.373.319-.64.599-.92s.546-.453.92-.598c.282-.11.705-.24 1.485-.276.738-.034 1.024-.044 2.515-.045zm4.988 1.328a.96.96 0 1 0 0 1.92.96.96 0 0 0 0-1.92m-4.27 1.122a4.109 4.109 0 1 0 0 8.217 4.109 4.109 0 0 0 0-8.217m0 1.441a2.667 2.667 0 1 1 0 5.334 2.667 2.667 0 0 1 0-5.334">
-                    </path>
-                </svg>
-            </button>
-            <button class="server-icon" id="twitter-button">
-                <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff">
-                    &#x3C;title>X (Twitter)&#x3C;/title>
-                    <path
-                        d="M18.901 1.153h3.68l-8.04 9.19 9.46 12.5h-7.41l-5.8-7.59-6.62 7.59H.3l8.59-9.83-9.06-11.87h7.57l5.24 6.93 6.08-6.93zM16.71 20.33h2.04L7.24 3.67H5.07l11.64 16.66z">
-                    </path>
-                </svg>
-            </button>
-            <button class="server-icon" id="youtube-button">
-                <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff">
-                    &#x3C;title>YouTube&#x3C;/title>
-                    <path
-                        d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.65 12 3.65 12 3.65s-7.505 0-9.377.4A3.016 3.016 0 0 0 .502 6.186c-.4 1.872-.4 5.814-.4 5.814s0 3.942.4 5.814a3.016 3.016 0 0 0 2.122 2.136c1.872.4 9.377.4 9.377.4s7.505 0 9.377-.4a3.016 3.016 0 0 0 2.122-2.136c.4-1.872.4-5.814.4-5.814s0-3.942-.4-5.814zM9.754 14.646V8.834l5.938 3.406-5.938 2.406z">
-                    </path>
-                </svg>
-            </button>
-            <button class="server-icon" id="discord-invite-button">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img">
-                    &#x3C;title>Discord&#x3C;/title>
-                    <path
-                        d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612">
-                    </path>
-                </svg>
-            </button>
-            <button class="server-icon">+</button>
-        </div>
+        <!-- Server rail. Tooltips are proper nouns, so they are not translated. -->
+        <nav class="servers-sidebar">
+            <div class="server-item" data-tooltip="DS 2000">
+                <button class="server-icon logo-fill active" id="DS2000-button">
+                    <img src="static/ds2000-logo.png" alt="DS 2000">
+                </button>
+            </div>
+            <div class="server-item" data-tooltip="Mechardo Labs">
+                <button class="server-icon wordmark" id="Mechardo-Labs-button">
+                    <img src="static/Mechardo-labs.svg" alt="Mechardo Labs"
+                        style="filter: brightness(0) invert(1);">
+                </button>
+            </div>
 
-        <!-- Panel de canales y usuario (al lado de servidores) -->
+            <div class="server-divider"></div>
+
+            <div class="server-item" data-tooltip="Instagram">
+                <button class="server-icon" id="instagram-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img"
+                        aria-label="Instagram">
+                        <path
+                            d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.9 3.9 0 0 0-1.417.923A3.9 3.9 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.7.01 5.555 0 5.827 0 8.001c0 2.172.01 2.444.048 3.297.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.298-.048c.851-.04 1.434-.174 1.943-.372a3.9 3.9 0 0 0 1.416-.923c.445-.445.718-.891.923-1.417.197-.509.332-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.445-.048-3.299c-.04-.851-.175-1.433-.372-1.941a3.9 3.9 0 0 0-.923-1.417A3.9 3.9 0 0 0 13.24.42c-.51-.198-1.092-.333-1.943-.372C10.443.01 10.172 0 7.998 0zm-.717 1.442h.718c2.136 0 2.389.007 3.232.046.78.035 1.204.166 1.486.275.373.145.64.319.92.599s.453.546.598.92c.11.281.24.705.275 1.485.039.843.047 1.096.047 3.231s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.485a2.5 2.5 0 0 1-.599.919c-.28.28-.546.453-.92.598-.28.11-.704.24-1.485.276-.843.038-1.096.047-3.232.047s-2.39-.009-3.233-.047c-.78-.036-1.203-.166-1.485-.276a2.5 2.5 0 0 1-.92-.598 2.5 2.5 0 0 1-.6-.92c-.109-.281-.24-.705-.275-1.485-.038-.843-.046-1.096-.046-3.233s.008-2.388.046-3.231c.036-.78.166-1.204.276-1.486.145-.373.319-.64.599-.92s.546-.453.92-.598c.282-.11.705-.24 1.485-.276.738-.034 1.024-.044 2.515-.045zm4.988 1.328a.96.96 0 1 0 0 1.92.96.96 0 0 0 0-1.92m-4.27 1.122a4.109 4.109 0 1 0 0 8.217 4.109 4.109 0 0 0 0-8.217m0 1.441a2.667 2.667 0 1 1 0 5.334 2.667 2.667 0 0 1 0-5.334">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+            <div class="server-item" data-tooltip="X (Twitter)">
+                <button class="server-icon" id="twitter-button">
+                    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff"
+                        aria-label="X (Twitter)">
+                        <path
+                            d="M18.901 1.153h3.68l-8.04 9.19 9.46 12.5h-7.41l-5.8-7.59-6.62 7.59H.3l8.59-9.83-9.06-11.87h7.57l5.24 6.93 6.08-6.93zM16.71 20.33h2.04L7.24 3.67H5.07l11.64 16.66z">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+            <div class="server-item" data-tooltip="YouTube">
+                <button class="server-icon" id="youtube-button">
+                    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff"
+                        aria-label="YouTube">
+                        <path
+                            d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.65 12 3.65 12 3.65s-7.505 0-9.377.4A3.016 3.016 0 0 0 .502 6.186c-.4 1.872-.4 5.814-.4 5.814s0 3.942.4 5.814a3.016 3.016 0 0 0 2.122 2.136c1.872.4 9.377.4 9.377.4s7.505 0 9.377-.4a3.016 3.016 0 0 0 2.122-2.136c.4-1.872.4-5.814.4-5.814s0-3.942-.4-5.814zM9.754 14.646V8.834l5.938 3.406-5.938 2.406z">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+            <div class="server-item" data-tooltip="Discord">
+                <button class="server-icon" id="discord-invite-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#ffffff" role="img"
+                        aria-label="Discord">
+                        <path
+                            d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Channel sidebar, with the user panel pinned to its bottom. -->
         <div class="channels-panel">
-            <!-- Encabezado del servidor -->
             <div class="server-header">
                 <h3>DS 2000</h3>
             </div>
 
-            <!-- Lista de opciones (menú) -->
             <div class="channel-list">
+                <div class="channel-category" data-i18n="menu.category">Controls</div>
                 <ul>
-                    <li class="menu-item active" data-tab="rgb" data-i18n="menu.rgb">RGB</li>
-                    <li class="menu-item" data-tab="discord" data-i18n="menu.discord">Discord</li>
-                    <li class="menu-item" data-tab="configuraciones" data-i18n="menu.settings">Settings</li>
-                    <li class="menu-item" data-tab="acerca" data-i18n="menu.about">About</li>
+                    <!-- data-i18n sits on the inner span: the translation pass overwrites the
+                         element's whole text, which would take the hash with it. -->
+                    <li class="menu-item active" data-tab="rgb">
+                        <span class="channel-hash">#</span>
+                        <span class="channel-name" data-i18n="menu.rgb">RGB</span>
+                    </li>
+                    <li class="menu-item" data-tab="discord">
+                        <span class="channel-hash">#</span>
+                        <span class="channel-name" data-i18n="menu.discord">Discord</span>
+                    </li>
+                    <li class="menu-item" data-tab="configuraciones">
+                        <span class="channel-hash">#</span>
+                        <span class="channel-name" data-i18n="menu.settings">Settings</span>
+                    </li>
+                    <li class="menu-item" data-tab="acerca">
+                        <span class="channel-hash">#</span>
+                        <span class="channel-name" data-i18n="menu.about">About</span>
+                    </li>
                 </ul>
             </div>
 
-            <!-- Panel de usuario (fijo en la parte inferior) -->
             <div class="user-panel">
-                <div class="user-avatar"></div>
-                <div class="user-info">
-                    <div class="user-name">Mechardo Labs</div>
-                    <div class="user-status" data-i18n="user.status">Online</div>
+                <div class="user-card">
+                    <div class="user-avatar" aria-hidden="true">M</div>
+                    <div class="user-info">
+                        <div class="user-name">Mechardo Labs</div>
+                        <div class="user-status" data-i18n="user.status">Online</div>
+                    </div>
                 </div>
                 <div class="user-icons">
                     <div class="icon" id="mic-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img">
                             <title data-i18n-title="icons.microphone">Microphone</title>
-                            <!-- Discord-style microphone -->
                             <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.5-3c-.55 0-1 .45-1 1
                                      0 2.49-2.01 4.5-4.5 4.5S7.5 14.49 7.5 12c0-.55-.45-1-1-1s-1 .45-1 1c0 3.08 2.35 5.64 5.5 5.96V20H9v2h6v-2h-2v-2.04
                                      c3.15-.32 5.5-2.88 5.5-5.96 0-.55-.45-1-1-1z" />
+                            <path class="slash slash-cut" d="M4 3.5L20 20.5" />
+                            <path class="slash slash-line" d="M4 3.5L20 20.5" />
                         </svg>
                     </div>
 
@@ -98,178 +128,212 @@
                             <title data-i18n-title="icons.headphones">Headphones</title>
                             <path
                                 d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z" />
-                            <path id="headset-slash" style="display: none;" d="M5 5l14 14" stroke="#ff0000"
-                                stroke-width="2.5" stroke-linecap="round" />
+                            <path class="slash slash-cut" d="M4 3.5L20 20.5" />
+                            <path class="slash slash-line" d="M4 3.5L20 20.5" />
                         </svg>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Área principal: Contenedor de pestañas -->
+        <!-- Content area: one panel per "channel". -->
         <div class="main-container">
-            <!-- Pestaña RGB (activa por defecto) -->
-            <div class="tab-content" id="rgb" style="display: block;">
+            <!-- RGB -->
+            <div class="tab-content active" id="rgb">
                 <div class="tab-header">
-                    <h4 data-i18n="rgb.heading">RGB</h4>
+                    <h4><span class="channel-hash">#</span><span data-i18n="rgb.heading">RGB</span></h4>
                     <p data-i18n="rgb.subtitle">Lighting configuration.</p>
                 </div>
                 <div class="tab-body">
-                    <div class="slider-container">
-                        <label for="mode-selector" data-i18n="rgb.mode">Mode:</label>
-                        <select id="mode-selector">
-                            <option value="cycle" data-i18n="rgb.modeCycle">Cycle</option>
-                            <option value="fixed" data-i18n="rgb.modeFixed">Fixed</option>
-                            <option value="wave" data-i18n="rgb.modeWave">Wave</option>
-                        </select>
-                    </div>
-                    <div class="slider-container">
-                        <label for="brightness-slider" data-i18n="rgb.brightness">Brightness:</label>
-                        <input type="range" id="brightness-slider" min="0" max="255" value="128">
-                        <span class="slider-value" id="brightness-value">128</span>
-                    </div>
-                    <div id="rgb-sliders-led1" class="rgb-sliders" style="display: none;">
-                        <h5 data-i18n="rgb.led1">LED 1</h5>
-                        <div class="slider-container">
-                            <label for="led1-red-slider" data-i18n="rgb.red">Red:</label>
-                            <input type="range" id="led1-red-slider" min="0" max="255" value="255">
-                            <span class="slider-value" id="led1-red-value">255</span>
-                        </div>
-                        <div class="slider-container">
-                            <label for="led1-green-slider" data-i18n="rgb.green">Green:</label>
-                            <input type="range" id="led1-green-slider" min="0" max="255" value="0">
-                            <span class="slider-value" id="led1-green-value">0</span>
-                        </div>
-                        <div class="slider-container">
-                            <label for="led1-blue-slider" data-i18n="rgb.blue">Blue:</label>
-                            <input type="range" id="led1-blue-slider" min="0" max="255" value="0">
-                            <span class="slider-value" id="led1-blue-value">0</span>
-                        </div>
-                    </div>
-                    <div id="rgb-sliders-led2" class="rgb-sliders" style="display: none;">
-                        <h5 data-i18n="rgb.led2">LED 2</h5>
-                        <div class="slider-container">
-                            <label for="led2-red-slider" data-i18n="rgb.red">Red:</label>
-                            <input type="range" id="led2-red-slider" min="0" max="255" value="255">
-                            <span class="slider-value" id="led2-red-value">255</span>
-                        </div>
-                        <div class="slider-container">
-                            <label for="led2-green-slider" data-i18n="rgb.green">Green:</label>
-                            <input type="range" id="led2-green-slider" min="0" max="255" value="0">
-                            <span class="slider-value" id="led2-green-value">0</span>
-                        </div>
-                        <div class="slider-container">
-                            <label for="led2-blue-slider" data-i18n="rgb.blue">Blue:</label>
-                            <input type="range" id="led2-blue-slider" min="0" max="255" value="0">
-                            <span class="slider-value" id="led2-blue-value">0</span>
-                        </div>
-                    </div>
+                    <div class="content">
+                        <section class="card">
+                            <h5 class="card-title" data-i18n="rgb.general">General</h5>
+                            <div class="slider-container">
+                                <label for="mode-selector" data-i18n="rgb.mode">Mode:</label>
+                                <select id="mode-selector">
+                                    <option value="cycle" data-i18n="rgb.modeCycle">Cycle</option>
+                                    <option value="fixed" data-i18n="rgb.modeFixed">Fixed</option>
+                                    <option value="wave" data-i18n="rgb.modeWave">Wave</option>
+                                </select>
+                            </div>
+                            <div class="slider-container track-brightness">
+                                <label for="brightness-slider" data-i18n="rgb.brightness">Brightness:</label>
+                                <input type="range" id="brightness-slider" min="0" max="255" value="128">
+                                <span class="slider-value" id="brightness-value">128</span>
+                            </div>
+                        </section>
 
+                        <div class="led-grid">
+                            <section id="rgb-sliders-led1" class="rgb-sliders" style="display: none;">
+                                <div class="led-head">
+                                    <h5 data-i18n="rgb.led1">LED 1</h5>
+                                    <span class="led-swatch" id="led1-swatch"></span>
+                                </div>
+                                <div class="slider-container track-red">
+                                    <label for="led1-red-slider" data-i18n="rgb.red">Red:</label>
+                                    <input type="range" id="led1-red-slider" min="0" max="255" value="255">
+                                    <span class="slider-value" id="led1-red-value">255</span>
+                                </div>
+                                <div class="slider-container track-green">
+                                    <label for="led1-green-slider" data-i18n="rgb.green">Green:</label>
+                                    <input type="range" id="led1-green-slider" min="0" max="255" value="0">
+                                    <span class="slider-value" id="led1-green-value">0</span>
+                                </div>
+                                <div class="slider-container track-blue">
+                                    <label for="led1-blue-slider" data-i18n="rgb.blue">Blue:</label>
+                                    <input type="range" id="led1-blue-slider" min="0" max="255" value="0">
+                                    <span class="slider-value" id="led1-blue-value">0</span>
+                                </div>
+                            </section>
+
+                            <section id="rgb-sliders-led2" class="rgb-sliders" style="display: none;">
+                                <div class="led-head">
+                                    <h5 data-i18n="rgb.led2">LED 2</h5>
+                                    <span class="led-swatch" id="led2-swatch"></span>
+                                </div>
+                                <div class="slider-container track-red">
+                                    <label for="led2-red-slider" data-i18n="rgb.red">Red:</label>
+                                    <input type="range" id="led2-red-slider" min="0" max="255" value="255">
+                                    <span class="slider-value" id="led2-red-value">255</span>
+                                </div>
+                                <div class="slider-container track-green">
+                                    <label for="led2-green-slider" data-i18n="rgb.green">Green:</label>
+                                    <input type="range" id="led2-green-slider" min="0" max="255" value="0">
+                                    <span class="slider-value" id="led2-green-value">0</span>
+                                </div>
+                                <div class="slider-container track-blue">
+                                    <label for="led2-blue-slider" data-i18n="rgb.blue">Blue:</label>
+                                    <input type="range" id="led2-blue-slider" min="0" max="255" value="0">
+                                    <span class="slider-value" id="led2-blue-value">0</span>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Pestaña Discord -->
-            <div class="tab-content" id="discord" style="display: none;">
+            <!-- Discord -->
+            <div class="tab-content" id="discord">
                 <div class="tab-header">
-                    <h4 data-i18n="discord.heading">Discord</h4>
+                    <h4><span class="channel-hash">#</span><span data-i18n="discord.heading">Discord</span></h4>
                     <p data-i18n="discord.subtitle">Connect DS 2000 to your Discord account.</p>
                 </div>
                 <div class="tab-body">
-                    <p class="discord-intro" data-i18n="discord.intro">
-                        Discord only lets an application control your microphone if you created
-                        that application yourself. It is free and only has to be done once.
-                    </p>
-                    <p class="link-button" id="discord-setup-guide" data-i18n="discord.guide">See step-by-step instructions</p>
+                    <div class="content">
+                        <section class="card">
+                            <p class="discord-intro" data-i18n="discord.intro">
+                                Discord only lets an application control your microphone if you created
+                                that application yourself. It is free and only has to be done once.
+                            </p>
+                            <p class="link-button" id="discord-setup-guide" data-i18n="discord.guide">See step-by-step
+                                instructions</p>
 
-                    <div class="field">
-                        <label for="discord-client-id" data-i18n="discord.clientId">Client ID</label>
-                        <input type="text" id="discord-client-id" autocomplete="off" spellcheck="false"
-                            data-i18n-placeholder="discord.clientIdPlaceholder" placeholder="e.g. 713524519830028368">
-                    </div>
-                    <div class="field">
-                        <label for="discord-client-secret" data-i18n="discord.clientSecret">Client Secret</label>
-                        <input type="password" id="discord-client-secret" autocomplete="off"
-                            spellcheck="false" placeholder="Shown only once in Discord">
-                    </div>
-                    <!-- Split around the <code> element, which carries a value rather than text. -->
-                    <p class="field-hint">
-                        <span data-i18n="discord.redirectHintBefore">Remember to add</span>
-                        <code id="discord-redirect-uri">http://localhost/</code>
-                        <span data-i18n="discord.redirectHintAfter">under OAuth2 &rarr; Redirects, or connecting will fail.</span>
-                    </p>
+                            <div class="card-divider"></div>
 
-                    <div class="button-row">
-                        <button id="discord-save-button" class="primary-button" data-i18n="discord.connect">Connect</button>
-                        <button id="discord-clear-button" class="secondary-button" data-i18n="discord.unlink">Unlink</button>
-                    </div>
+                            <div class="field">
+                                <label for="discord-client-id" data-i18n="discord.clientId">Client ID</label>
+                                <input type="text" id="discord-client-id" autocomplete="off" spellcheck="false"
+                                    data-i18n-placeholder="discord.clientIdPlaceholder"
+                                    placeholder="e.g. 713524519830028368">
+                            </div>
+                            <div class="field">
+                                <label for="discord-client-secret" data-i18n="discord.clientSecret">Client Secret</label>
+                                <input type="password" id="discord-client-secret" autocomplete="off" spellcheck="false"
+                                    placeholder="Shown only once in Discord">
+                            </div>
 
-                    <p id="discord-feedback" class="feedback" role="status"></p>
+                            <!-- Split around the <code> element, which carries a value rather than text. -->
+                            <p class="field-hint">
+                                <span data-i18n="discord.redirectHintBefore">Remember to add</span>
+                                <code id="discord-redirect-uri">http://localhost/</code>
+                                <span data-i18n="discord.redirectHintAfter">under OAuth2 &rarr; Redirects, or connecting
+                                    will fail.</span>
+                            </p>
+
+                            <div class="button-row">
+                                <button id="discord-save-button" class="primary-button"
+                                    data-i18n="discord.connect">Connect</button>
+                                <button id="discord-clear-button" class="secondary-button"
+                                    data-i18n="discord.unlink">Unlink</button>
+                            </div>
+
+                            <p id="discord-feedback" class="feedback" role="status"></p>
+                        </section>
+                    </div>
                 </div>
             </div>
 
-            <!-- Pestaña Configuraciones -->
-            <div class="tab-content" id="configuraciones" style="display: none;">
+            <!-- Settings -->
+            <div class="tab-content" id="configuraciones">
                 <div class="tab-header">
-                    <h4 data-i18n="settings.heading">Settings</h4>
+                    <h4><span class="channel-hash">#</span><span data-i18n="settings.heading">Settings</span></h4>
                     <p data-i18n="settings.subtitle">General application settings.</p>
                 </div>
                 <div class="tab-body">
-                    <p data-i18n="settings.options">Configuration options:</p>
-                    <label><input type="checkbox" id="start-with-windows"> <span
-                            data-i18n="settings.startWithWindows">Start with Windows</span></label><br>
-                    <label><input type="checkbox" id="start-minimized"> <span
-                            data-i18n="settings.startMinimized">Start minimised</span></label>
-                    <p id="startup-feedback" class="feedback"></p>
+                    <div class="content">
+                        <section class="card">
+                            <h5 class="card-title" data-i18n="settings.startupSection">Startup</h5>
+                            <label class="switch-row">
+                                <span data-i18n="settings.startWithWindows">Start with Windows</span>
+                                <input type="checkbox" class="switch" id="start-with-windows">
+                            </label>
+                            <label class="switch-row">
+                                <span data-i18n="settings.startMinimized">Start minimised</span>
+                                <input type="checkbox" class="switch" id="start-minimized">
+                            </label>
+                            <p id="startup-feedback" class="feedback"></p>
+                        </section>
 
-                    <div class="slider-container">
-                        <label for="language-selector" data-i18n="settings.language">Language:</label>
-                        <!-- Each option is named in its own language: someone who cannot read the
-                             current one still has to be able to find theirs. -->
-                        <select id="language-selector">
-                            <option value="en">English</option>
-                            <option value="es">Español</option>
-                        </select>
-                    </div>
+                        <section class="card">
+                            <h5 class="card-title" data-i18n="settings.appSection">Application</h5>
+                            <div class="slider-container">
+                                <label for="language-selector" data-i18n="settings.language">Language:</label>
+                                <!-- Each option is named in its own language: someone who cannot read the
+                                     current one still has to be able to find theirs. -->
+                                <select id="language-selector">
+                                    <option value="en">English</option>
+                                    <option value="es">Español</option>
+                                </select>
+                            </div>
+                        </section>
 
-                    <div class="connection-status">
-                        <p id="discord-status" class="disconnected">Discord: Not connected</p>
-                        <p id="serial-status" class="disconnected">Serial: Not connected</p>
+                        <section class="card">
+                            <h5 class="card-title" data-i18n="settings.statusSection">Connections</h5>
+                            <div class="connection-status">
+                                <p id="discord-status" class="disconnected">Discord: Not connected</p>
+                                <p id="serial-status" class="disconnected">Serial: Not connected</p>
+                            </div>
+                        </section>
                     </div>
                 </div>
             </div>
 
-            <!-- Pestaña Acerca -->
-            <div class="tab-content" id="acerca" style="display: none;">
+            <!-- About -->
+            <div class="tab-content" id="acerca">
                 <div class="tab-header">
-                    <h4 data-i18n="about.heading">About</h4>
+                    <h4><span class="channel-hash">#</span><span data-i18n="about.heading">About</span></h4>
                     <p data-i18n="about.subtitle">Information about DS 2000.</p>
                 </div>
-                <div class="tab-body" style="text-align: center;">
-                    <p><span data-i18n="about.version">Version:</span> <span id="app-version">…</span></p>
-                    <p data-i18n="about.developedBy">Developed by Mechardo Labs</p>
-                    <p class="link-button" id="serviceTerms" data-i18n="about.terms">Terms of service</p>
-                    <p class="link-button" id="privacyPolicy" data-i18n="about.privacy">Privacy policy</p>
-                    <p data-i18n="about.updates">Check for updates (TODO)</p>
+                <div class="tab-body">
+                    <div class="content">
+                        <div class="about-hero">
+                            <img class="about-logo" src="static/ds2000-logo.png" alt="DS 2000">
+                            <h2 class="about-name">DS 2000</h2>
+                            <span class="about-version"><span data-i18n="about.version">Version:</span> <span
+                                    id="app-version">…</span></span>
+                            <p class="about-author" data-i18n="about.developedBy">Developed by Mechardo Labs</p>
+                        </div>
+
+                        <section class="card about-links">
+                            <p class="link-button" id="serviceTerms" data-i18n="about.terms">Terms of service</p>
+                            <p class="link-button" id="privacyPolicy" data-i18n="about.privacy">Privacy policy</p>
+                            <p class="about-note" data-i18n="about.updates">Check for updates (TODO)</p>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Script para manejar el cambio de pestañas -->
-    <script>
-        document.querySelectorAll('.menu-item').forEach(item => {
-            item.addEventListener('click', () => {
-                // Remover active de todos los items
-                document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-                // Agregar active al clicked
-                item.classList.add('active');
-                // Ocultar todos los contenidos
-                document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
-                // Mostrar el correspondiente
-                document.getElementById(item.dataset.tab).style.display = 'block';
-            });
-        });
-    </script>
 </body>
 
 </html>
