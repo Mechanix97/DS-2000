@@ -689,6 +689,11 @@ input[type="range"]::-moz-range-thumb {
     background: linear-gradient(90deg, #101114, #ffffff);
 }
 
+/* Left to right is slow to fast, so the gradient tightens rather than brightens. */
+.track-speed input[type="range"] {
+    background: repeating-linear-gradient(90deg, #101114 0 10px, #4b5058 10px 12px);
+}
+
 .track-red input[type="range"] {
     background: linear-gradient(90deg, #101114, #ff2d2d);
 }

@@ -14,14 +14,22 @@ pub struct RGBConfigMessage {
 
 impl SerialFrame for RGBConfigMessage {
     const CODE: u8 = 0x04;
+    /// Frame layout is `[brightness][mode][speed]` followed by six colour bytes for the modes that
+    /// use them.
+    ///
+    /// Speed sits before the colours rather than after so its offset does not depend on the mode.
+    /// Appending it would have put it at index 2 for the rainbow and index 8 otherwise, and the
+    /// firmware would have to know the mode before it could find it.
     fn encode(&self, buf: &mut dyn BufMut) -> Result<(), SerialMessageError> {
         buf.put_u8(self.update.brightness);
         match &self.update.rgb_mode {
-            RGBMode::Cycle => {
+            RGBMode::Rainbow => {
                 buf.put_u8(0x00);
+                buf.put_u8(self.update.speed);
             }
             RGBMode::Fixed { led1, led2 } => {
                 buf.put_u8(0x01);
+                buf.put_u8(self.update.speed);
                 buf.put_u8(led1.red);
                 buf.put_u8(led1.green);
                 buf.put_u8(led1.blue);
@@ -31,6 +39,7 @@ impl SerialFrame for RGBConfigMessage {
             }
             RGBMode::Breathing { led1, led2 } => {
                 buf.put_u8(0x02);
+                buf.put_u8(self.update.speed);
                 buf.put_u8(led1.red);
                 buf.put_u8(led1.green);
                 buf.put_u8(led1.blue);
@@ -52,12 +61,15 @@ impl SerialFrame for RGBConfigMessage {
         let (&brightness, rest) = msg_data
             .split_first()
             .ok_or(SerialMessageError::InvalidMessageLength)?;
-        let (&mode, colors) = rest
+        let (&mode, rest) = rest
+            .split_first()
+            .ok_or(SerialMessageError::InvalidMessageLength)?;
+        let (&speed, colors) = rest
             .split_first()
             .ok_or(SerialMessageError::InvalidMessageLength)?;
 
         let rgb_mode = match mode {
-            0x00 => RGBMode::Cycle,
+            0x00 => RGBMode::Rainbow,
             0x01 | 0x02 => {
                 if colors.len() < 6 {
                     return Err(SerialMessageError::InvalidMessageLength);
@@ -84,6 +96,7 @@ impl SerialFrame for RGBConfigMessage {
         Ok(Self {
             update: RGBConfig {
                 brightness,
+                speed,
                 rgb_mode,
             },
         })
@@ -123,20 +136,54 @@ mod tests {
 
         round_trip(RGBConfig {
             brightness: 128,
-            rgb_mode: RGBMode::Cycle,
+            speed: 200,
+            rgb_mode: RGBMode::Rainbow,
         });
         round_trip(RGBConfig {
             brightness: 200,
+            speed: 0,
             rgb_mode: RGBMode::Fixed { led1, led2 },
         });
         round_trip(RGBConfig {
             brightness: 1,
+            speed: 254,
             rgb_mode: RGBMode::Breathing { led1, led2 },
         });
     }
 
+    /// Pins the byte order, which is a contract with the firmware rather than an implementation
+    /// detail. Speed has to sit at a fixed offset: appending it instead would move it depending on
+    /// the mode, and the device would have to decide what the frame is before it could find it.
+    #[test]
+    fn speed_travels_between_the_mode_and_the_colours() {
+        let mut buffer = Vec::new();
+        RGBConfigMessage {
+            update: RGBConfig {
+                brightness: 10,
+                speed: 20,
+                rgb_mode: RGBMode::Fixed {
+                    led1: LedRgb {
+                        red: 1,
+                        green: 2,
+                        blue: 3,
+                    },
+                    led2: LedRgb {
+                        red: 4,
+                        green: 5,
+                        blue: 6,
+                    },
+                },
+            },
+        }
+        .encode(&mut buffer)
+        .expect("encodes");
+
+        assert_eq!(buffer, vec![10, 0x01, 20, 1, 2, 3, 4, 5, 6]);
+    }
+
     #[test]
     fn a_truncated_colour_payload_is_rejected() {
+        // Brightness, mode and speed arrived; the six colour bytes did not.
         // Previously this returned a default configuration and the corruption went unnoticed.
         assert_eq!(
             RGBConfigMessage::decode(&[128, 0x01, 10, 20]),
@@ -145,9 +192,18 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_mode_is_rejected() {
+    fn a_payload_without_a_speed_byte_is_rejected() {
         assert_eq!(
-            RGBConfigMessage::decode(&[128, 0x09]),
+            RGBConfigMessage::decode(&[128, 0x00]),
+            Err(SerialMessageError::InvalidMessageLength)
+        );
+    }
+
+    #[test]
+    fn an_unknown_mode_is_rejected() {
+        // Long enough to be well formed, so it is the mode that is rejected and not the length.
+        assert_eq!(
+            RGBConfigMessage::decode(&[128, 0x09, 50]),
             Err(SerialMessageError::MalformedData)
         );
     }

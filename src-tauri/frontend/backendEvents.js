@@ -14,6 +14,7 @@ const serialStatus = document.getElementById('serial-status');
 
 const rgbModeSelector = document.getElementById('mode-selector');
 const brightnessSlider = document.getElementById('brightness-slider');
+const speedSlider = document.getElementById('speed-slider');
 
 // led 1
 const led1RedSlider = document.getElementById('led1-red-slider');
@@ -126,21 +127,30 @@ function updateSwatches() {
 
 updateSwatches();
 
-// Handle mode selector changes
-rgbModeSelector.addEventListener('change', (event) => {
-  const mode = event.target.value;
-  const led1Sliders = document.getElementById('rgb-sliders-led1');
-  const led2Sliders = document.getElementById('rgb-sliders-led2');
+const led1Sliders = document.getElementById('rgb-sliders-led1');
+const led2Sliders = document.getElementById('rgb-sliders-led2');
+const speedRow = document.getElementById('speed-row');
 
-  if (mode === 'cycle') {
-    led1Sliders.style.display = 'none';
-    led2Sliders.style.display = 'none';
-  } else {
-    led1Sliders.style.display = 'block';
-    led2Sliders.style.display = 'block';
-  }
+// Which controls a mode actually reads. Showing a slider the device ignores invites the
+// conclusion that it is broken, so each one is hidden where it means nothing: the rainbow picks
+// its own colours, and Fixed does not move.
+function applyModeVisibility() {
+  const mode = rgbModeSelector.value;
+  const colored = mode !== 'rainbow';
+  const animated = mode !== 'fixed';
+
+  led1Sliders.style.display = colored ? 'block' : 'none';
+  led2Sliders.style.display = colored ? 'block' : 'none';
+  speedRow.style.display = animated ? 'flex' : 'none';
+}
+
+rgbModeSelector.addEventListener('change', () => {
+  applyModeVisibility();
   updateRGB();
 });
+
+// Run once so the markup does not have to hardcode the default mode's layout.
+applyModeVisibility();
 
 // The mode goes by name. Sending the <select> index coupled the device's behaviour to the
 // option order, and the two had already drifted apart.
@@ -149,6 +159,7 @@ function updateRGB() {
     request: {
       mode: rgbModeSelector.value,
       brightness: parseInt(brightnessSlider.value),
+      speed: parseInt(speedSlider.value),
       led1: {
         red: parseInt(led1RedSlider.value),
         green: parseInt(led1GreenSlider.value),
@@ -164,6 +175,10 @@ function updateRGB() {
 }
 
 brightnessSlider.addEventListener('change', (event) => {
+  updateRGB();
+});
+
+speedSlider.addEventListener('change', (event) => {
   updateRGB();
 });
 

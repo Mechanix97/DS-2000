@@ -249,6 +249,9 @@ pub async fn controller_start(ui_refresh: State<'_, UiRefreshHandle>) -> Result<
 pub struct RgbRequest {
     pub mode: RgbModeName,
     pub brightness: u8,
+    /// Only the animated modes read it, but the frontend sends it unconditionally so the field
+    /// does not have to be optional on either side.
+    pub speed: u8,
     pub led1: LedRgb,
     pub led2: LedRgb,
 }
@@ -256,7 +259,7 @@ pub struct RgbRequest {
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum RgbModeName {
-    Cycle,
+    Rainbow,
     Fixed,
     Breathing,
 }
@@ -266,14 +269,16 @@ impl From<RgbRequest> for RGBConfig {
         let RgbRequest {
             mode,
             brightness,
+            speed,
             led1,
             led2,
         } = request;
 
         RGBConfig {
             brightness,
+            speed,
             rgb_mode: match mode {
-                RgbModeName::Cycle => RGBMode::Cycle,
+                RgbModeName::Rainbow => RGBMode::Rainbow,
                 RgbModeName::Fixed => RGBMode::Fixed { led1, led2 },
                 RgbModeName::Breathing => RGBMode::Breathing { led1, led2 },
             },
@@ -312,7 +317,7 @@ mod tests {
 
     fn request(mode: &str) -> RgbRequest {
         serde_json::from_str(&format!(
-            r#"{{"mode":"{mode}","brightness":128,
+            r#"{{"mode":"{mode}","brightness":128,"speed":64,
                  "led1":{{"red":1,"green":2,"blue":3}},
                  "led2":{{"red":4,"green":5,"blue":6}}}}"#
         ))
@@ -336,7 +341,18 @@ mod tests {
                 led2: led(4, 5, 6)
             }
         );
-        assert_eq!(RGBConfig::from(request("cycle")).rgb_mode, RGBMode::Cycle);
+        assert_eq!(
+            RGBConfig::from(request("rainbow")).rgb_mode,
+            RGBMode::Rainbow
+        );
+    }
+
+    /// Speed reaches the device even in the mode that ignores it, so the byte keeps its offset.
+    #[test]
+    fn speed_survives_the_conversion_in_every_mode() {
+        for mode in ["rainbow", "fixed", "breathing"] {
+            assert_eq!(RGBConfig::from(request(mode)).speed, 64, "mode {mode}");
+        }
     }
 
     #[test]

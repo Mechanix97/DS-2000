@@ -151,7 +151,7 @@
                             <div class="slider-container">
                                 <label for="mode-selector" data-i18n="rgb.mode">Mode:</label>
                                 <select id="mode-selector">
-                                    <option value="cycle" data-i18n="rgb.modeCycle">Cycle</option>
+                                    <option value="rainbow" data-i18n="rgb.modeRainbow">Rainbow</option>
                                     <option value="fixed" data-i18n="rgb.modeFixed">Fixed</option>
                                     <option value="breathing" data-i18n="rgb.modeBreathing">Breathing</option>
                                 </select>
@@ -160,6 +160,12 @@
                                 <label for="brightness-slider" data-i18n="rgb.brightness">Brightness:</label>
                                 <input type="range" id="brightness-slider" min="0" max="255" value="128">
                                 <span class="slider-value" id="brightness-value">128</span>
+                            </div>
+                            <!-- Only the animated modes read it, so the row is hidden for Fixed. -->
+                            <div class="slider-container track-speed" id="speed-row">
+                                <label for="speed-slider" data-i18n="rgb.speed">Speed:</label>
+                                <input type="range" id="speed-slider" min="0" max="255" value="128">
+                                <span class="slider-value" id="speed-value">128</span>
                             </div>
                         </section>
 
